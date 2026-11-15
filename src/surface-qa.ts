@@ -16,6 +16,8 @@ const poses: Pose[] = [
   { id: '08-overview', label: '8 Overview', position: [17,15,31], target: [2.8,.5,0] },
   { id: '09-bridge-facing-observatory', label: '9 Bridge toward observatory', position: [2,3.5,7.5], target: [1.5,.8,-1.6] },
   { id: '10-bridge-upper', label: '10 Bridge upper', position: [5,9,3], target: [1.7,.6,-1.9] },
+  { id: '11-bridge-from-observatory', label: '11 Bridge from observatory', position: [-.1,4.2,-1], target: [3.35,.6,-.3] },
+  { id: '12-bridge-low-side', label: '12 Bridge low side', position: [5.6,1.35,-.1], target: [2.35,1.1,-1.45] },
 ];
 export type SurfaceQaCommand = { type: 'pose'; index: number } | { type: 'orbit'; height: 'low'|'high' } | { type: 'stop'|'release'|'bridge'|'capture'|'benchmark'|'export' };
 type Context = { state: GameState; zone: string|null; intro: boolean; photo: boolean; assetsReady: boolean; reducedMotion: boolean };
@@ -47,6 +49,8 @@ export function createSurfaceQa(options: {
   Object.assign(toggle.style,buttonStyle,{marginLeft:'8px'});root.insertBefore(toggle,body);
   toggle.onclick=()=>{const hidden=body.style.display!=='none';body.style.display=hidden?'none':'block';toggle.textContent=hidden?'Show panel':'Hide panel';};
   const note=document.createElement('p');note.textContent='Same live scene. Import your 4/4 save normally. Close game panels; keep viewport, quality and lighting matched. No save changes.';body.append(note);
+  const recordingNote=document.createElement('p');recordingNote.id='surface-qa-recording-shortcuts';recordingNote.textContent='Clean recording hides this entire panel. Alt+Shift+Q restores/toggles it. Alt+Shift+R: replay bridge; L: low orbit; H: high orbit; S: stop (all with Alt+Shift).';body.append(recordingNote);
+  const cleanRecording=document.createElement('button');cleanRecording.textContent='Clean recording view';cleanRecording.setAttribute('aria-describedby',recordingNote.id);Object.assign(cleanRecording.style,buttonStyle,{display:'block',marginBottom:'10px'});cleanRecording.onclick=()=>{root.style.display='none'};body.append(cleanRecording);
   const phaseLabel=document.createElement('label');phaseLabel.textContent='Artifact phase: ';
   const phaseSelect=document.createElement('select');phaseSelect.setAttribute('aria-label','QA artifact phase');
   for(const value of ['before','after']){const option=document.createElement('option');option.value=value;option.textContent=value;phaseSelect.append(option)}
@@ -117,6 +121,14 @@ export function createSurfaceQa(options: {
   }
   function interrupt(reason:string){mark(reason);if(run&&document.hidden)run.hidden=true;}
   const onVisibility=()=>{if(document.hidden)interrupt('Document hidden')};document.addEventListener('visibilitychange',onVisibility);
+  const shortcutCommands:Partial<Record<string,SurfaceQaCommand>>={KeyR:{type:'bridge'},KeyL:{type:'orbit',height:'low'},KeyH:{type:'orbit',height:'high'},KeyS:{type:'stop'}};
+  const onKeyDown=(event:KeyboardEvent)=>{
+    if(!event.altKey||!event.shiftKey||event.ctrlKey||event.metaKey||event.repeat||event.isComposing)return;
+    if(event.code==='KeyQ'){event.preventDefault();event.stopPropagation();root.style.display=root.style.display==='none'?'':'none';return}
+    const action=shortcutCommands[event.code];if(!action)return;
+    event.preventDefault();event.stopPropagation();options.invoke(action);
+  };
+  document.addEventListener('keydown',onKeyDown);
   status.textContent='Select one of the eight matched views. PNGs keep the live viewport. Measures have not run yet.';
-  return {command,applyCamera,beginRender,endRender,environment,interrupt,dispose(){interrupt('Scene disposed');document.removeEventListener('visibilitychange',onVisibility);renderer.info.autoReset=autoReset;root.remove();}};
+  return {command,applyCamera,beginRender,endRender,environment,interrupt,dispose(){interrupt('Scene disposed');document.removeEventListener('visibilitychange',onVisibility);document.removeEventListener('keydown',onKeyDown);renderer.info.autoReset=autoReset;root.remove();}};
 }
