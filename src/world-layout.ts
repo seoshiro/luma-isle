@@ -44,9 +44,9 @@ export function terraceProfile(r:number):Point2[]{
 export const TERRACE={center,topY:1.805,seamY:1.455,bottomY:.05,topRadius:radius,seamRadius:2.35,baseRadius:2.8,footprint:terraceProfile(radius).map(p=>[p[0]+center[0],p[1]+center[2]] as Point2),baseFootprint:terraceProfile(2.8).map(p=>[p[0]+center[0],p[1]+center[2]] as Point2)};
 
 export const MAIN_PATHS:readonly PathDefinition[]=[
-  {id:'main',width:.9,cornerRadius:.65,points:[[-5.5,.17,4],[-2,.17,4.7],[2,.17,4.5],[4,.17,2],[7,.17,1.6]]},
+  // The mill doorstep and water crossing sit over measured GLB stone, not the old cliff edge.
+  {id:'main',width:.9,cornerRadius:.65,points:[[-6.15,.17,2.2],[-5.45,.36,3.1],[-3.2,.36,3.1],[-2,.17,4.7],[2,.17,4.5],[4,.17,2],[7,.17,1.6]]},
   {id:'bridge-approach',width:BRIDGE.width,cornerRadius:.5,points:[[4,.17,2],[4.05,.2,.25],BRIDGE.near]},
-  {id:'mill-approach',width:.7,cornerRadius:.3,points:[[-4.9,.17,3.5],[-7,.17,3.9]]},
 ];
 export const GARDEN_ORIGIN:Point3=[14.3,.1,-1.6];
 export const GARDEN_PATHS:readonly PathDefinition[]=[{id:'garden',width:.9,cornerRadius:.6,points:[[-2,.14,.3],[.1,.14,.3],[1.1,.14,-.3]]}];

@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {readFileSync} from 'node:fs';
 import * as THREE from 'three';
 import {BRIDGE,TERRACE,MAIN_PATHS,GARDEN_PATHS,GARDEN_ORIGIN,GARDEN_CONNECTOR,LEGACY_MAIN_PATHS,LEGACY_GARDEN_PATH,bridgePoint,terraceProfile,legacyPathRandomCount,samplePath,pathFootprint,pointInPolygon,type Point2} from './world-layout';
 import {bridgeDeckVertices,createBridgeDeckSection,createPathNetworkGeometry,createPathSeams,createTerraceLayer,unionPathOutlines} from './world-geometry';
 import {createIsland} from './world';
 import {createInitialState} from './game';
+import {createTerrainSurface} from './terrain-surface';
 
 const close=(a:number,b:number,epsilon=1e-7)=>assert.ok(Math.abs(a-b)<epsilon,`${a} != ${b}`);
 test('one bridge definition docks both full-width top edges and the vertical underside',()=>{
@@ -46,7 +48,7 @@ test('rounded routes retain exact perpendicular width and form closed nonoverlap
     const samples=samplePath(path),outline=pathFootprint(path);assert.deepEqual(samples[0].center,path.points[0]);assert.deepEqual(samples.at(-1)!.center,path.points.at(-1));
     for(let i=0;i<samples.length;i++){const a=outline[i],b=outline[outline.length-1-i];close(Math.hypot(a[0]-b[0],a[1]-b[1]),path.width);close(Math.hypot(...samples[i].tangent),1)}
   }
-  const loops=unionPathOutlines(MAIN_PATHS.map(pathFootprint));assert.equal(loops.length,1,'main and both approaches must be one joined surface');
+  const loops=unionPathOutlines(MAIN_PATHS.map(pathFootprint));assert.equal(loops.length,1,'main and bridge approach must be one joined surface');
   const geometry=createPathNetworkGeometry(MAIN_PATHS),position=geometry.getAttribute('position');assert.ok(position.count>50);for(let i=0;i<position.count;i++)assert.ok(Number.isFinite(position.getY(i)));
   assert.ok(geometry.getAttribute('normal').getY(0)>0);
   const seams=createPathSeams(MAIN_PATHS);assert.ok(seams.index&&seams.index.count>0);assert.ok(seams.getAttribute('normal').getY(0)>.9);
@@ -62,6 +64,23 @@ test('garden connector has identical docking edges and goes around lighthouse fo
 test('legacy random budgets remain exactly the original two calls per slab',()=>{
   const original=(points:readonly (readonly number[])[])=>{let count=0;for(let i=1;i<points.length;i++){const n=Math.ceil(new THREE.Vector3(...points[i] as [number,number,number]).distanceTo(new THREE.Vector3(...points[i-1] as [number,number,number]))/.28);for(let j=0;j<n;j++)count+=2}return count};
   for(const points of [...LEGACY_MAIN_PATHS,LEGACY_GARDEN_PATH])assert.equal(legacyPathRandomCount(points),original(points));
+});
+
+test('mill route has real full-width stone support and clears the waterwheel/channel',()=>{
+  const bytes=readFileSync(new URL('../public/models/island.glb',import.meta.url)),jsonLength=bytes.readUInt32LE(12),gltf=JSON.parse(bytes.subarray(20,20+jsonLength).toString()),binary=bytes.subarray(28+jsonLength);
+  const read=(index:number)=>{const accessor=gltf.accessors[index],view=gltf.bufferViews[accessor.bufferView],elements=accessor.type==='VEC3'?3:1,size=accessor.componentType===5126||accessor.componentType===5125?4:2,result:number[]=[];for(let i=0;i<accessor.count;i++)for(let j=0;j<elements;j++){const offset=(view.byteOffset??0)+(accessor.byteOffset??0)+i*(view.byteStride??elements*size)+j*size;result.push(accessor.componentType===5126?binary.readFloatLE(offset):size===4?binary.readUInt32LE(offset):binary.readUInt16LE(offset))}return result};
+  const primitive=gltf.meshes[0].primitives[0],geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(read(primitive.attributes.POSITION),3));geometry.setIndex(read(primitive.indices));geometry.computeBoundingBox();
+  const bounds=geometry.boundingBox!,size=bounds.getSize(new THREE.Vector3()),center=bounds.getCenter(new THREE.Vector3()),mesh=new THREE.Mesh(geometry),wrapper=new THREE.Group();mesh.position.set(-center.x,-bounds.min.y,-center.z);wrapper.scale.set(24.5/size.x,5.8/size.y,16/size.z);wrapper.position.y=-(.164-bounds.min.y)*wrapper.scale.y;wrapper.add(mesh);
+  const ground=createTerrainSurface([{mesh,role:'island-body'}],{minY:-6,maxY:.6,minNormalY:.05,componentPolicy:'all',minComponentArea:0}),route=MAIN_PATHS[0];
+  assert.deepEqual(route.points[0],[-6.15,.17,2.2]);assert.ok(!MAIN_PATHS.some(p=>p.id==='mill-approach'),'remove the unsupported cliff dead-end');
+  let contacts=0;
+  for(const {center:p,tangent:t} of samplePath(route,.08)){if(p[0]>-1.8)continue;for(const offset of [-.45,-.225,0,.225,.45]){
+    const x=p[0]-t[1]*offset,z=p[2]+t[0]*offset,hit=ground.sample(x,z);assert.ok(hit,`no actual stone under mill path at ${x},${z}`);assert.ok(hit.position.y>=-.5);assert.ok(p[1]-hit.position.y<.75,'retain short grounded footings, never tall cliff cantilevers');contacts++;
+    if(x>=-5&&x<=-3.475)assert.ok(p[1]-.16>=.145+.04,'leave water visible below the deliberate channel span');
+  }}
+  assert.ok(contacts>250);
+  for(const p of pathFootprint(route))if(p[0]>=-5.21&&p[0]<=-2.75)assert.ok(p[1]>=2.6,'paving enters the waterwheel sweep');
+  geometry.dispose();
 });
 
 test('deck top normals face up and initial completed saves/replay share the same terminal pose',()=>{

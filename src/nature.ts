@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {markGroundObject} from './island-grounding';
 
 export interface NatureOptions { reducedMotion?: boolean; quality?: 'low'|'medium'|'high'; finalReveal?: boolean }
 const TAU = Math.PI * 2;
@@ -53,7 +54,7 @@ export function createNature(root: THREE.Group, garden: THREE.Group) {
   const stemsMaterial = new THREE.MeshStandardMaterial({color:'#77964e',roughness:1});
   const stemsGeometry = new THREE.CylinderGeometry(.018,.025,.28,5);
   const flowers = Array.from({length:14},(_,i)=>{
-    const a=i/14*TAU;const flower=new THREE.Group();flower.position.set(Math.cos(a)*(1.25+(i%3)*.17),.12,Math.sin(a)*1.15);blooms.add(flower);
+    const a=i/14*TAU;const flower=new THREE.Group();flower.position.set(Math.cos(a)*(1.25+(i%3)*.17),.12,Math.sin(a)*1.15);markGroundObject(flower,{kind:'flower',radius:.11,id:`garden-bloom-${i}`});blooms.add(flower);
     const stem=new THREE.Mesh(stemsGeometry,stemsMaterial);stem.position.y=.14;flower.add(stem);
     const head=new THREE.Group();head.position.y=.29;flower.add(head);
     for(let p=0;p<5;p++){const pa=p/5*TAU;const petal=new THREE.Mesh(petalGeometry,petalMaterial);petal.position.set(Math.cos(pa)*.075,0,Math.sin(pa)*.075);petal.scale.set(.095,.035,.055);petal.rotation.y=-pa;head.add(petal);}

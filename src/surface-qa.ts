@@ -18,8 +18,9 @@ const poses: Pose[] = [
   { id: '10-bridge-upper', label: '10 Bridge upper', position: [5,9,3], target: [1.7,.6,-1.9] },
   { id: '11-bridge-from-observatory', label: '11 Bridge from observatory', position: [-.1,4.2,-1], target: [3.35,.6,-.3] },
   { id: '12-bridge-low-side', label: '12 Bridge low side', position: [5.6,1.35,-.1], target: [2.35,1.1,-1.45] },
+  { id: '13-bench-side', label: '13 Bench side', position: [6,2.2,3], target: [4,.5,4.8] },
 ];
-export type SurfaceQaCommand = { type: 'pose'; index: number } | { type: 'orbit'; height: 'low'|'high' } | { type: 'stop'|'release'|'bridge'|'capture'|'benchmark'|'export' };
+export type SurfaceQaCommand = { type: 'pose'; index: number } | { type: 'orbit'; height: 'low'|'high' } | { type: 'stop'|'release'|'bridge'|'capture'|'benchmark'|'export'|'context-loss' };
 type Context = { state: GameState; zone: string|null; intro: boolean; photo: boolean; assetsReady: boolean; reducedMotion: boolean };
 type Frame = { rafMs: number; renderCpuMs: number; calls: number; triangles: number; textures: number };
 type Environment = ReturnType<ReturnType<typeof createSurfaceQa>['environment']>;
@@ -62,6 +63,8 @@ export function createSurfaceQa(options: {
   button('Stop orbit / hold camera',{type:'stop'});button('Release camera',{type:'release'});
   button('Replay bridge in this pose',{type:'bridge'});button('Export current PNG',{type:'capture'});
   button('Measure 5s + 30s',{type:'benchmark'});button('Export QA JSON',{type:'export'});
+  const recoveryTest=button('Simulate WebGL context loss',{type:'context-loss'});recoveryTest.style.gridColumn='1 / -1';
+  const recoveryNote=document.createElement('p');recoveryNote.id='surface-qa-recovery-note';recoveryNote.textContent='Local recovery test: deliberately interrupts this WebGL context, without changing your save. Use Retry on the normal recovery screen afterward.';recoveryTest.setAttribute('aria-describedby',recoveryNote.id);body.append(recoveryNote);
   const status=document.createElement('pre');Object.assign(status.style,{whiteSpace:'pre-wrap',font:'11px/1.5 ui-monospace,monospace',margin:'8px 0 0',color:'#f2f7e9'});body.append(status);
   const stopMini=button('Stop',{type:'stop'},root);Object.assign(stopMini.style,{marginTop:'6px'});
   document.body.append(root);
@@ -79,6 +82,14 @@ export function createSurfaceQa(options: {
   function command(value:SurfaceQaCommand){
     if(value.type==='export'){jsonDownload({schema:'luma-surface-qa-v1',exportedAt:new Date().toISOString(),phase,protocol:{warmupSeconds:5,sampleSeconds:30,orbitPeriodSeconds:30,frameTime:'Unclamped real RAF interval; not GPU time.',renderCounts:'All existing renderer passes, including optical pass and any fallback redraw.',poses},current:environment(),captures,runs:results,activeRun:run?{status:'unfinished',frameCount:run.frames.length,interruptions:run.interruptions}:null},`luma-surface-${phase}-metrics-${stamp()}.json`);return}
     if(!ready())return;
+    if(value.type==='context-loss'){
+      const recoveryExtension=renderer.getContext().getExtension('WEBGL_lose_context');
+      if(!recoveryExtension){status.textContent='WEBGL_lose_context is unavailable. No recovery test was run.';return}
+      mark('WebGL context loss requested');
+      try{recoveryExtension.loseContext();status.textContent='Real WebGL context loss requested. Use Retry on the normal recovery screen. Your save was not changed.'}
+      catch(error){status.textContent=`Context-loss request failed: ${String(error)}`}
+      return;
+    }
     if(value.type==='pose'){mark('Camera pose changed during run');selected=value.index;const pose=poses[selected];if(!pose)return;locked=true;orbit=null;fixedPosition=[...pose.position];fixedTarget=[...pose.target];options.cancelCameraMotion();status.textContent=`${phase} · ${pose.id}\nReady to export at current viewport.`;return}
     if(value.type==='orbit'){mark('Orbit changed during run');locked=true;orbit=value.height;orbitStart=performance.now();options.cancelCameraMotion();status.textContent=`${phase} · ${orbit} orbit running`;return}
     if(value.type==='stop'){mark('Stopped during run');hold();status.textContent='Camera held. Orbit stopped.';return}
