@@ -5,6 +5,7 @@ import {createTerrainSurface,surfaceRandom,type TerrainSurface,type TerrainSourc
 import {checkGrounding,findGrounding,diskProbes,rectangleProbes,blockedBy,type GroundMask,type GroundingRequest} from './ground-placement';
 import {meadowGroundColor} from './ground-material';
 import {createGroundedPathFoundation,type PathFoundationDiagnostics} from './path-support';
+import {createSupportStoneMaterial} from './support-stone';
 
 export type GroundKind='tree'|'cypress'|'shrub'|'rock'|'lamp'|'bench'|'pot'|'flower';
 export interface GroundObjectSpec {kind:GroundKind;radius:number;id?:string;preferred?:SurfacePoint2;searchRadius?:number}
@@ -14,7 +15,7 @@ export function markGroundObject<T extends THREE.Object3D>(object:T,spec:GroundO
   return object;
 }
 
-export interface GroundingRecord {id:string;kind:GroundKind;from:number[];to:number[];supported:boolean;reason:string;contactGap:number;footprintRadius:number}
+export interface GroundingRecord {id:string;kind:GroundKind;from:number[];to:number[];supported:boolean;reason:string;contactGap:number;footprintRadius:number;footContacts?:SurfacePoint3[];supportPad?:boolean}
 export interface GroundingReport {records:GroundingRecord[];unplaced:string[];pathSupports:number;pathUnsupported:SurfacePoint2[];pathFoundations:{frame:string;diagnostics:PathFoundationDiagnostics}[];milliseconds:number;surfaces:{main:number;garden:number};source:{main:'loaded'|'procedural';garden:'loaded'|'procedural'}}
 type Slots={island:THREE.Group;gardenBase:THREE.Group;mill:THREE.Group;workshop:THREE.Group;observatory:THREE.Group;lighthouse:THREE.Group};
 
@@ -159,7 +160,7 @@ export function finalizeIslandGrounding(root:THREE.Group,garden:THREE.Group,slot
     {id:'bench-clearance',kind:'box',center:[4.1,4.45],halfSize:[.95,.75]}];
   for(const name of ['mill','workshop','lighthouse']as const){const mask=transformedFootprint(slots[name],root,`building-${name}`,-.1,1.15);if(mask)mainMasks.push(mask);}
   const gardenMasks:GroundMask[]=[...pathMasks(GARDEN_PATHS),{id:'garden-arch',kind:'box',center:[0,.15],halfSize:[1.05,.55]}];
-  const supportMaterial=new THREE.MeshStandardMaterial({color:'#baa98b',roughness:1});
+  const supportMaterial=createSupportStoneMaterial();
   const soilMaterial=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1});
   const frames=[{frame:root,surface:main,raw:rawMain,masks:mainMasks},{frame:garden,surface:small,raw:rawSmall,masks:gardenMasks}];
   for(const {frame,surface,raw,masks}of frames){
@@ -172,7 +173,7 @@ export function finalizeIslandGrounding(root:THREE.Group,garden:THREE.Group,slot
       const spec=object.userData.groundObject as GroundObjectSpec,from=object.position.toArray();
       const tree=spec.kind==='tree'?treeFootprint(object,frame,spec.radius):null;
       const radius=tree?.radius??spec.radius;
-      const contacts:SurfacePoint3[]=tree?.contacts??(spec.kind==='bench'?[[-.6,-.02,-.15],[.6,-.02,-.15],[-.6,-.02,.15],[.6,-.02,.15]]:spec.kind==='lamp'?diskProbes(radius*.8,radius).map(([x,z])=>[x,0,z] as SurfacePoint3):[[0,0,0]]);
+      const contacts:SurfacePoint3[]=tree?.contacts??(spec.kind==='bench'?[[-.6,-.02,-.15],[.6,-.02,-.15],[-.6,-.02,.15],[.6,-.02,.15]]:spec.kind==='lamp'||spec.kind==='pot'?diskProbes(spec.kind==='pot'?.13:.17,.045).map(([x,z])=>[x,0,z] as SurfacePoint3):[[0,0,0]]);
       const footprint=spec.kind==='bench'?rectangleProbes(.8,.35,.18):diskProbes(radius,Math.max(.09,radius/3));
       const center:SurfacePoint2=spec.preferred??[object.position.x,object.position.z];
       const ownMasks=masks.filter(mask=>!(spec.kind==='bench'&&mask.id==='bench-clearance'));
@@ -181,12 +182,13 @@ export function finalizeIslandGrounding(root:THREE.Group,garden:THREE.Group,slot
       const crownExclusions=tree&&frame===root?[{mask:{id:'bridge-crown-clearance',kind:'polygon' as const,points:BRIDGE.sweep},padding:tree.crownRadius+.3}]:[];
       const request:GroundingRequest={center,footprint,contacts,masks:[...ownMasks,...extraMasks],centerExclusions:crownExclusions,clearance:spec.kind==='lamp'?.12:.035,maxSlope:spec.kind==='tree'?.77:.6,maxHeightRange:spec.kind==='tree'?.45:.24,maxContactGap:spec.kind==='tree'?.2:spec.kind==='bench'?.075:.3,penetration:spec.kind==='tree'?.035:.015};
       let result=checkGrounding(surface,request);
+      let supportPad=false;
       if(!result.supported)result=findGrounding(surface,request,{radius:spec.searchRadius??(spec.kind==='tree'?3.8:spec.kind==='lamp'?1.7:spec.kind==='bench'?.5:2.8),step:spec.kind==='tree'?.24:.18,seed:spec.id});
       if(!result.supported)result=widerGrounding(surface,request,spec.id!);
       if(!result.supported){report.unplaced.push(spec.id!);object.visible=false;}else{
         object.position.set(result.position.x,result.position.y,result.position.z);
         if(spec.kind==='tree'&&result.contactGap>.06)plantingCollar(frame,surface,[result.position.x,result.position.z],radius,result.position.y+.035,soilMaterial,true);
-        if(spec.kind==='lamp'&&result.contactGap>.025)plantingCollar(frame,surface,[result.position.x,result.position.z],radius,result.position.y+.015,supportMaterial);
+        if((spec.kind==='lamp'||spec.kind==='pot')&&result.contactGap>.012){const pad=plantingCollar(frame,surface,[result.position.x,result.position.z],spec.kind==='pot'?.15:.18,result.position.y+.006,supportMaterial);if(pad){pad.name=`${spec.kind==='pot'?'Pot':'Lamp'} stone foot pad`;pad.userData.supports=spec.id;supportPad=true;}}
         if(spec.kind==='bench'&&result.contactGap>.02)for(const offset of [-.6,.6]){
           const x=result.position.x+offset,z=result.position.z,top=result.position.y-.02;
           const feet=rectangleProbes(.075,.22,.1).map(([dx,dz])=>surface.sample(x+dx,z+dz)).filter((hit):hit is NonNullable<typeof hit>=>!!hit);
@@ -195,7 +197,7 @@ export function finalizeIslandGrounding(root:THREE.Group,garden:THREE.Group,slot
         const exclusion=spec.kind==='bench'?{id:spec.id!,kind:'box' as const,center:[object.position.x,object.position.z]as SurfacePoint2,halfSize:[.95,.65]as SurfacePoint2}:{id:spec.id!,kind:'circle' as const,center:[object.position.x,object.position.z]as SurfacePoint2,radius:spec.kind==='shrub'?radius*.6:radius+(spec.kind==='tree'?.12:.06)};
         masks.push(exclusion);
       }
-      report.records.push({id:spec.id!,kind:spec.kind,from,to:object.position.toArray(),supported:result.supported,reason:result.reason,contactGap:result.contactGap,footprintRadius:radius});
+      report.records.push({id:spec.id!,kind:spec.kind,from,to:object.position.toArray(),supported:result.supported,reason:result.reason,contactGap:result.contactGap,footprintRadius:radius,...(spec.kind==='lamp'||spec.kind==='pot'?{supportPad,footContacts:contacts.map(([x,y,z])=>[x+object.position.x,y+object.position.y,z+object.position.z] as SurfacePoint3)}:{})});
       if(spec.kind!=='tree'&&spec.kind!=='flower')staticObjects.push(object);
     }
     batchGroundDecor(frame,staticObjects);

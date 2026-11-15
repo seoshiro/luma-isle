@@ -78,3 +78,30 @@ no physical-phone test or headphone
 listening acceptance is claimed. Local evidence, saves, reference material and
 secrets remain excluded from the repository. No new paid assets or generation:
 cumulative spend remains 87.5 of the original 300-credit allowance.
+
+## Observatory stonework refinement
+
+Local material-only refinement, 15 November 2026. The formerly smooth pedestal
+now has warm grey-beige limestone faces, broad mineral/weathering variation,
+soft irregular crevices, convex bump relief and a weathered coping/top finish.
+The final pass was reviewed in the matching daylight observatory close view.
+
+- Implementation: `src/terrace-stone.ts`; focused regressions:
+  `src/terrace-stone.test.ts`; only terrace construction/import wiring changes
+  in `src/world.ts` belong to this refinement.
+- Both original terrace meshes retain byte-identical position and normal data.
+  Bridge docking remains at the common vertical plane 1.98; all radii, heights,
+  transforms, bridge mechanics and triangle counts are unchanged. The existing
+  `world-geometry.ts` and `world-layout.ts` files are unchanged.
+- Six deterministic local textures use 3 MiB of pixel data, approximately 4 MiB
+  with mipmaps. Two meshes use three materials/draws instead of two, with no
+  external files, requests, dependencies, generation charges or per-frame work.
+  Isolated local Node runs measured roughly 294-316 ms for one-time map creation;
+  this is not a browser/GPU benchmark.
+- Textured meshes retain complete UVs through world batching. All maps are
+  directly attached to scene-owned materials, so standard scene cleanup finds
+  and disposes two geometries, three materials and six textures once each.
+- Final focused-refinement checkpoint: 76/76 tests passed, TypeScript and Vite
+  production build passed, and `git diff --check` passed. The existing large-chunk
+  advisory remains. These checks precede the final aggregate check of the separate
+  water/prop support fixes; publication is a separate gate.
