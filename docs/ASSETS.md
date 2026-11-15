@@ -1,6 +1,6 @@
 # Release assets
 
-Six locally bundled GLB models were generated with Tripo 2.5 through Higgsfield.
+Six locally bundled GLB models were generated with Tripo (`tripo_3d`) through Higgsfield.
 Seven generations used 87.5 credits in total, including one rejected tree crown.
 The rejected output, original models, Blender sources and private generation
 records are excluded. Optimized models use 2K textures. No generation service
