@@ -13,8 +13,11 @@ the earlier floating-control implementation and browser checks.
 - The main continuous foundation has two runs, no unsupported samples and a
   maximum height of 0.54 units. The garden has one run and an intentional 0.138-unit
   supported setback at one outer corner, documented rather than hidden by a fake pier.
-- Deterministic surface masks place 1,970 grass tufts and 113 accents in 51 groups,
-  with a maximum 258,190 triangles for that vegetation workload. Roots stay fixed
+- Deterministic surface masks place 1,970 grass tufts and 104 accents in 52 groups,
+  with a maximum 257,000 triangles for that vegetation workload. Main island:
+  1,800 tufts, 97 accents, 45 groups, 234,746 triangles; garden: 170 tufts,
+  7 accents, 7 groups, 22,254 triangles. These final counts follow canopy relocation.
+  Roots stay fixed
   in wind; reduced motion freezes motion. Low quality retains approximately 12%.
 - Bridge/terrace connections and continuous paths were visually reviewed,
   including additional bridge-side viewpoints. Transparent beam shadow casting
@@ -51,6 +54,9 @@ p95. These short samples are not a sustained frame-rate guarantee.
 - Fresh initial save, entry, all four puzzles completed manually, garden reward,
   and retained 4/4 progress after reload were checked in Chrome.
 - Wide 1920x1080 PNG export was saved and visually inspected.
+- A supplementary bench-side view confirmed both feet grounded and a clear gap
+  from the tree and path. Chrome low-quality mode showed visibly sparse grass and
+  a matte dock with sharp icons; medium quality was restored afterwards.
 - Real WEBGL_lose_context recovery separated the HUD/focus from the failed scene;
   its 1920x1080 poster loaded, exported save file was verified, and Retry reloaded
   all GLBs with 4/4 progress retained.
@@ -63,8 +69,12 @@ p95. These short samples are not a sustained frame-rate guarantee.
 
 ## Limits and budget
 
-New recording and final low-quality/reduced-motion UI checks are pending at this
-checkpoint. Safari/Firefox are not installed; no physical-phone test or headphone
+The new recording is pending at this checkpoint. New grass reduced-motion wind
+behavior is unit-tested, but a new visual grass reduced-motion check was not
+completed: the final DevTools emulation attempt did not succeed. The earlier
+Liquid Glass reduced-motion UI check passed before grass integration and is not
+presented as validation of the later grass. Safari/Firefox are not installed;
+no physical-phone test or headphone
 listening acceptance is claimed. Local evidence, saves, reference material and
 secrets remain excluded from the repository. No new paid assets or generation:
 cumulative spend remains 87.5 of the original 300-credit allowance.
