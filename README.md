@@ -27,7 +27,7 @@ backup is kept. Localhost progress does not automatically transfer to GitHub Pag
 
 Repository: https://github.com/seoshiro/luma-isle
 
-Expected Pages address after the first successful deployment:
+Live GitHub Pages site:
 https://seoshiro.github.io/luma-isle/
 
 In repository Settings > Pages, set Source to **GitHub Actions**. The workflow
@@ -43,4 +43,4 @@ Reference archives, development captures, credentials, dependencies and player
 save backups are deliberately excluded. Do not publish a staging build before
 final artwork and release QA are complete.
 
-See [QA status](docs/QA.md) for checked flows and remaining release checks.
+See [QA status](docs/QA.md) for verified local/live flows and testing limitations.
