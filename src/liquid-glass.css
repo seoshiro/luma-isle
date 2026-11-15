@@ -1,0 +1,251 @@
+/* Only the two overview controls use this material. Panels remain dense. */
+.bottom-hud.liquid-glass-hud {
+  --glass-ink: #263f39;
+  --glass-muted: #456057;
+  --glass-complete: #345944;
+  --glass-tint-top: #fff9e980;
+  --glass-tint-bottom: #f7f6e538;
+  --glass-frosted: #f7f3e6d9;
+  --glass-matte: #f8f3e8;
+  --glass-border: #fffdf4b3;
+  --glass-shade: #1d38462e;
+  --glass-active: 0;
+  --glass-selected: #fffbec80;
+  --glass-selected-edge: #fffef6bf;
+  --glass-tooltip: #f9f4e9;
+  gap: 16px;
+  z-index: 6;
+}
+.sunset .bottom-hud.liquid-glass-hud {
+  --glass-tint-top: #fff1da8c;
+  --glass-tint-bottom: #f3d7bb38;
+  --glass-frosted: #f7e8d7e0;
+  --glass-matte: #f9eadb;
+  --glass-tooltip: #f9eadb;
+  --glass-selected: #fff3df91;
+}
+.night .bottom-hud.liquid-glass-hud {
+  --glass-ink: #f4f6ed;
+  --glass-muted: #d5e5de;
+  --glass-complete: #c1e3c6;
+  --glass-tint-top: #304653a6;
+  --glass-tint-bottom: #1c314786;
+  --glass-frosted: #263c4de8;
+  --glass-matte: #263c4d;
+  --glass-border: #d6e7ed7a;
+  --glass-shade: #06111b66;
+  --glass-selected: #d8e9e733;
+  --glass-selected-edge: #e7f6f45c;
+  --glass-tooltip: #263c4d;
+}
+.glass-surface {
+  position: relative;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  color: var(--glass-ink);
+  box-shadow: 0 12px 28px -9px var(--glass-shade), 0 3px 7px #172e3821;
+  /* Do not add filter, opacity, isolation or a parent backdrop-filter here.
+     The fallback backdrop must be able to see the actual scene canvas. */
+}
+.glass-backdrop, .glass-tint, .glass-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.glass-backdrop { background: var(--glass-frosted); }
+.glass-surface[data-glass-mode="frosted"] .glass-backdrop {
+  -webkit-backdrop-filter: blur(9px) saturate(1.12);
+  backdrop-filter: blur(9px) saturate(1.12);
+}
+.glass-surface[data-glass-mode="refractive"] .glass-backdrop { background: transparent; }
+.glass-tint { background: linear-gradient(155deg, var(--glass-tint-top), var(--glass-tint-bottom) 68%); }
+.glass-rim {
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 1px #ffffffd9, inset 1px 0 2px #ffffff73,
+    inset -1px 0 2px #ffffff59, inset 0 -1px 1px #203c4c40,
+    inset 0 -4px 7px -5px #27465485;
+}
+.glass-rim::before {
+  content: '';
+  position: absolute;
+  inset: 2px 3px;
+  border-radius: inherit;
+  border-top: 1px solid #ffffff5c;
+  border-bottom: 1px solid #ffffff33;
+}
+.glass-rim::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 17%;
+  width: 45%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #fffef5, transparent);
+  transition: transform .5s ease, opacity .3s ease;
+}
+.glass-surface:hover .glass-rim::after { transform: translateX(8px); opacity: .85; }
+.night .glass-rim { box-shadow: inset 0 1px 1px #e9f5ff8c, inset 1px 0 2px #e9f5ff47, inset -1px 0 2px #e9f5ff33, inset 0 -1px 1px #091b2b99; }
+.glass-surface[data-glass-mode="matte"] .glass-backdrop { background: var(--glass-matte); }
+.glass-surface[data-glass-mode="matte"] .glass-tint { background: linear-gradient(155deg, #ffffff24, transparent 70%); }
+.glass-dock { --dock-cell: 64px; --dock-padding: 8px; --dock-height: 70px; }
+.glass-navigation {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: var(--dock-padding);
+  height: var(--dock-height);
+}
+.glass-active-indicator {
+  position: absolute;
+  top: var(--dock-padding);
+  left: var(--dock-padding);
+  width: var(--dock-cell);
+  height: calc(var(--dock-height) - var(--dock-padding) * 2);
+  border-radius: 28px;
+  border: 1px solid var(--glass-selected-edge);
+  background: linear-gradient(150deg, var(--glass-selected), #ffffff12);
+  box-shadow: inset 0 1px 1px #ffffff5c, 0 2px 5px #24403914;
+  transform: translate3d(calc(var(--glass-active) * var(--dock-cell)), 0, 0);
+  transition: transform .48s cubic-bezier(.2, 1.25, .3, 1), background .25s ease;
+  pointer-events: none;
+  /* Deliberately paint-only: no second refraction or backdrop layer. */
+}
+.glass-navigation[data-pressed="true"] .glass-active-indicator {
+  transform: translate3d(calc(var(--glass-active) * var(--dock-cell)), 0, 0) scale(1.025, .94);
+}
+.glass-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--dock-cell);
+  min-width: 44px;
+  height: calc(var(--dock-height) - var(--dock-padding) * 2);
+  padding: 0;
+  border-radius: 26px;
+  background: transparent;
+  color: var(--glass-ink);
+}
+.glass-stage.complete { color: var(--glass-complete); }
+.glass-stage-icon { position: relative; display: flex; transition: transform .38s cubic-bezier(.2, 1.4, .3, 1); }
+.glass-stage:hover .glass-stage-icon { transform: translateY(-1px) scale(1.055); }
+.glass-stage:active .glass-stage-icon { transform: scale(.9); }
+.glass-stage.current::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.glass-stage-check {
+  position: absolute;
+  top: -5px;
+  right: -9px;
+  width: 12px;
+  height: 12px;
+  padding: 1px;
+  border-radius: 50%;
+  background: #41654b;
+  color: #fff9eb;
+  box-shadow: 0 0 0 1px #f6f3e8;
+}
+.glass-stage-name {
+  position: absolute;
+  bottom: calc(100% + 17px);
+  left: 50%;
+  transform: translate(-50%, 5px);
+  padding: 9px 13px;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: var(--glass-tooltip);
+  box-shadow: 0 4px 18px #17313b24;
+  color: var(--glass-ink);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease, transform .25s ease;
+}
+.glass-stage:hover .glass-stage-name, .glass-stage:focus-visible .glass-stage-name,
+.glass-photo-button:hover .glass-stage-name, .glass-photo-button:focus-visible .glass-stage-name { opacity: 1; transform: translate(-50%, 0); }
+.glass-progress-count {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  width: 71px;
+  margin-left: 6px;
+  padding-left: 6px;
+  border-left: 1px solid #73877b40;
+  font-size: 20px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.glass-progress-count small { font-size: 13px; color: var(--glass-muted); }
+.glass-photo, .glass-photo-button { width: 60px; height: 60px; }
+.glass-photo-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+}
+.glass-photo-button > svg { transition: transform .4s cubic-bezier(.2, 1.4, .3, 1); }
+.glass-photo-button:hover > svg { transform: scale(1.07) rotate(-3deg); }
+.glass-photo-button:active > svg { transform: scale(.87); }
+/* Override the global button brightness filter and press translation locally. */
+.glass-stage:hover:not(:disabled), .glass-photo-button:hover:not(:disabled) { filter: none; }
+.glass-stage:active:not(:disabled), .glass-photo-button:active:not(:disabled) { transform: none; }
+.glass-stage:focus-visible, .glass-photo-button:focus-visible { outline: 2px solid var(--glass-ink); outline-offset: 2px; }
+.glass-surface[data-glass-motion="still"] *, .glass-surface[data-glass-motion="still"] *::after { transition: none; }
+.glass-surface[data-glass-motion="still"] .glass-stage-icon,
+.glass-surface[data-glass-motion="still"] .glass-photo-button > svg { transform: none; }
+.glass-surface[data-glass-motion="still"] .glass-active-indicator { transform: translateX(calc(var(--glass-active) * var(--dock-cell))); }
+@media (max-width: 700px) {
+  .bottom-hud.liquid-glass-hud { width: calc(100% - 32px); gap: 10px; }
+  .glass-dock { --dock-cell: clamp(44px, calc((100vw - 184px) / 4), 52px); --dock-padding: 6px; --dock-height: 62px; }
+  .glass-stage-icon > svg { width: 23px; height: 23px; }
+  .glass-stage-icon > .glass-stage-check { width: 11px; height: 11px; }
+  .glass-progress-count { width: 46px; margin-left: 3px; padding-left: 3px; gap: 4px; font-size: 18px; }
+  .glass-progress-count small { font-size: 11px; }
+  .glass-photo, .glass-photo-button { width: 50px; height: 50px; }
+  .glass-photo-button .glass-stage-name { left: auto; right: 0; transform: translate(0, 5px); }
+  .glass-photo-button:hover .glass-stage-name, .glass-photo-button:focus-visible .glass-stage-name { transform: translate(0, 0); }
+  .glass-stage-name { max-width: 180px; font-size: 10px; }
+  .glass-stage:first-of-type .glass-stage-name { left: 0; transform: translate(0, 5px); }
+  .glass-stage:first-of-type:hover .glass-stage-name, .glass-stage:first-of-type:focus-visible .glass-stage-name { transform: translate(0, 0); }
+}
+@media (max-width: 350px) {
+  .bottom-hud.liquid-glass-hud { width: calc(100% - 20px); gap: 8px; }
+  .glass-dock { --dock-padding: 5px; }
+  .glass-progress-count { width: 42px; margin-left: 0; padding-left: 2px; gap: 3px; }
+}
+@media (hover: none) {
+  .glass-stage:hover .glass-stage-name, .glass-photo-button:hover .glass-stage-name { opacity: 0; }
+  .glass-stage:focus-visible .glass-stage-name, .glass-photo-button:focus-visible .glass-stage-name { opacity: 1; }
+  .glass-stage:hover .glass-stage-icon, .glass-photo-button:hover > svg { transform: none; }
+}
+@media (prefers-contrast: more) {
+  .glass-stage, .glass-photo-button { color: var(--glass-ink); }
+  .glass-rim { border: 2px solid var(--glass-ink); }
+  .glass-active-indicator { border: 2px solid var(--glass-ink); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .glass-surface *, .glass-surface *::after { transition: none !important; }
+  .glass-stage-icon, .glass-photo-button > svg { transform: none !important; }
+  .glass-active-indicator { transform: translateX(calc(var(--glass-active) * var(--dock-cell))) !important; }
+}
+@media (forced-colors: active) {
+  .glass-backdrop, .glass-tint { background: Canvas !important; }
+  .glass-surface, .glass-stage, .glass-photo-button { color: ButtonText; }
+  .glass-rim, .glass-active-indicator { border: 2px solid ButtonText; }
+  .glass-stage-name { background: Canvas; color: CanvasText; border-color: CanvasText; }
+}
