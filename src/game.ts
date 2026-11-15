@@ -14,7 +14,7 @@ export type Stage = 0 | 1 | 2 | 3 | 4;
 export type Language = 'ru' | 'en';
 export type Quality = 'low' | 'medium' | 'high';
 export type Lighting = 'morning' | 'sunset' | 'night';
-export interface Settings { language: Language; sound: boolean; quality: Quality; lighting: Lighting }
+export interface Settings { language: Language; sound: boolean; volume: number; quality: Quality; lighting: Lighting }
 export interface GameState {
   version: typeof SAVE_VERSION;
   stage: Stage;
@@ -37,7 +37,7 @@ export type GameAction =
   | { type: 'RESET' };
 export function createInitialState(): GameState {
   return { version: SAVE_VERSION, stage: 0, gates: [false, false, false], disks: [1, 2, 3], rings: [2, 5], lighthouseAngle: 0,
-    settings: { language: 'ru', sound: false, quality: 'medium', lighting: 'morning' }, entered: false };
+    settings: { language: 'ru', sound: false, volume: 0.3, quality: 'medium', lighting: 'morning' }, entered: false };
 }
 const equal = (a: readonly unknown[], b: readonly unknown[]) => a.length === b.length && a.every((v, i) => v === b[i]);
 const indexValid = (index: number, length: number) => Number.isInteger(index) && index >= 0 && index < length;
@@ -66,7 +66,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'ENTER': return state.entered ? state : { ...state, entered: true };
     case 'RESET': return { ...createInitialState(), settings: { ...state.settings }, entered: state.entered };
     case 'SET_SETTINGS': {
-      if (!record(action.settings) || Object.keys(action.settings).some(key => !['language', 'sound', 'quality', 'lighting'].includes(key))) return state;
+      if (!record(action.settings) || Object.keys(action.settings).some(key => !['language', 'sound', 'volume', 'quality', 'lighting'].includes(key))) return state;
       const settings = { ...state.settings, ...action.settings };
       return validSettings(settings) ? { ...state, settings } : state;
     }
@@ -99,7 +99,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const exactKeys = (value: Record<string, unknown>, keys: readonly string[]) => Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 function validSettings(value: unknown): value is Settings {
-  return record(value) && exactKeys(value, ['language', 'sound', 'quality', 'lighting']) && ['ru', 'en'].includes(value.language as string)
+  return record(value) && exactKeys(value, ['language', 'sound', 'volume', 'quality', 'lighting']) && ['ru', 'en'].includes(value.language as string)
+    && typeof value.volume === 'number' && Number.isFinite(value.volume) && value.volume >= 0 && value.volume <= 1
     && typeof value.sound === 'boolean' && ['low', 'medium', 'high'].includes(value.quality as string)
     && ['morning', 'sunset', 'night'].includes(value.lighting as string);
 }
@@ -112,6 +113,8 @@ export function parseSave(raw: string): GameState | null {
     if (typeof raw !== 'string' || raw.length > 16384) return null;
     const value: unknown = JSON.parse(raw);
     if (!record(value) || !exactKeys(value, ['version', 'stage', 'gates', 'disks', 'rings', 'lighthouseAngle', 'settings', 'entered'])) return null;
+    // Additive v1 migration only: unknown keys and malformed values remain invalid.
+    if (value.version === 1 && record(value.settings) && exactKeys(value.settings, ['language', 'sound', 'quality', 'lighting'])) value.settings = { ...value.settings, volume: 0.3 };
     if (value.version !== SAVE_VERSION || !Number.isInteger(value.stage) || (value.stage as number) < 0 || (value.stage as number) > 4
       || typeof value.entered !== 'boolean' || !validSettings(value.settings)
       || !Array.isArray(value.gates) || value.gates.length !== 3 || !value.gates.every(v => typeof v === 'boolean')

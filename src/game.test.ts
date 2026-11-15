@@ -13,8 +13,19 @@ test('initial saves are independent and sound defaults off', () => {
   first.gates[0] = true;
   assert.equal(second.gates[0], false);
   assert.equal(second.settings.sound, false);
+  assert.equal(second.settings.volume, 0.3);
   assert.equal(second.stage, 0);
   assert.equal(second.entered, false);
+});
+test('legacy v1 volume migration preserves progress and rejects malformed volume', () => {
+  const state = atStage(2);
+  const legacy = JSON.parse(serializeSave(state)); delete legacy.settings.volume;
+  assert.deepEqual(parseSave(JSON.stringify(legacy)), state);
+  for (const volume of [-1, 1.01, null, '0.3']) assert.equal(parseSave(JSON.stringify({ ...state, settings: { ...state.settings, volume } })), null);
+  for (const volume of [0, .3, 1]) {
+    const next = gameReducer(state, { type: 'SET_SETTINGS', settings: { volume } });
+    assert.equal(parseSave(serializeSave(next))?.settings.volume, volume);
+  }
 });
 test('all eight water combinations match the visible channel graph', () => {
   for (let bits = 0; bits < 8; bits++) {
