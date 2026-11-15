@@ -18,7 +18,10 @@ The following checks were reported completed on the procedural development build
 - Six optimized GLB models integrated; provenance and sizes in [ASSETS.md](ASSETS.md).
 - All four puzzles manually completed again after art integration.
 - Garden opening and final message checked.
-- Final pre-publication automated tests: 9/9 passed; TypeScript and Vite build passed.
+- Initial pre-publication automated tests: 9/9 passed; TypeScript and Vite build passed.
+- The entry-copy update adds a regression test for the exact Russian and English
+  LUMA entry labels and removal of the previous wording from all localization strings.
+  Updated test suite: 10/10 passed; TypeScript and Vite build passed again.
 - Model loading and fallback image use the project-aware Vite BASE_URL.
 - Source-file and exclusion audit completed before initial publication.
 
@@ -28,7 +31,9 @@ checked. The earlier square/portrait export results are recorded in the baseline
 ## Public production verification
 
 Verified on 2026-11-15 at https://seoshiro.github.io/luma-isle/ against application
-commit `c7be0b5`. Subsequent QA documentation changes do not change application code.
+commit `c7be0b5`. A subsequent copy-only correction changes the RU/EN entry labels
+to LUMA and adds the regression test noted above; its public locale check is separate
+from the gameplay verification recorded here.
 
 - All six GLB URLs and the fallback image returned HTTP 200 under `/luma-isle/`.
 - Desktop Chrome loaded the final island, entry and skip-intro controls correctly.

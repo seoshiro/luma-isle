@@ -1,3 +1,4 @@
+import { copy } from './i18n.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createInitialState, gameReducer, parseSave, serializeSave, getWaterFlow, isLighthouseAligned, PUZZLES, LIGHTHOUSE_TARGET, LIGHTHOUSE_TOLERANCE, type GameAction, type GameState } from './game.ts';
@@ -111,4 +112,10 @@ test('reset preserves preferences; validated replacement cannot admit corrupt im
   assert.equal(reset.stage, 0); assert.equal(reset.settings.language, 'en'); assert.equal(reset.entered, true);
   assert.equal(gameReducer(reset, { type: 'REPLACE', state: { ...completed, stage: 0 } }), reset);
   assert.deepEqual(gameReducer(reset, { type: 'REPLACE', state: completed }), completed);
+});
+
+test('entry labels use LUMA in both languages and obsolete wording is absent', () => {
+  assert.equal(copy.ru.enter, '\u0412\u043e\u0439\u0442\u0438 \u0432 \u043c\u0438\u0440 LUMA');
+  assert.equal(copy.en.enter, 'Enter the world of LUMA');
+  assert.doesNotMatch(JSON.stringify(copy), /\u0441\u0432\u0438\u043d|\bpig(?:s)?\b|\bswine\b/i);
 });
