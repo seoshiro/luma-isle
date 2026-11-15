@@ -19,3 +19,13 @@ Total: 10,318,128 bytes (10.3 MB decimal, 9.84 MiB).
 
 Generation/output terms: [Higgsfield Terms of Use, section 4.4](https://higgsfield.ai/terms-of-use-agreement).
 This provenance note is not a separate license grant for the application.
+
+
+## Interface typeface
+Manrope variable (weights 200–800), with Cyrillic and Latin glyphs, is bundled locally.
+Source: https://github.com/google/fonts/tree/main/ofl/manrope
+Copyright: The Manrope Project Authors. SIL Open Font License 1.1 is included as
+public/fonts/Manrope-OFL.txt. The unchanged font is public/fonts/Manrope-Variable.ttf
+(164,700 bytes; SHA-256 3ae11c49db0455a3cc33e37d380f20fdb8c7f8b41dc07625c177e3d87a9d6ae6).
+No external font request or generation service is used by the interface.
+The living-detail and typography work used no additional Higgsfield credits.

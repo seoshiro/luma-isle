@@ -1,6 +1,7 @@
 import { copy } from './i18n.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createInitialState, gameReducer, parseSave, serializeSave, getWaterFlow, isLighthouseAligned, PUZZLES, LIGHTHOUSE_TARGET, LIGHTHOUSE_TOLERANCE, type GameAction, type GameState } from './game.ts';
 
 const atStage = (stage: number) => {
@@ -16,6 +17,53 @@ test('initial saves are independent and sound defaults off', () => {
   assert.equal(second.settings.volume, 0.3);
   assert.equal(second.stage, 0);
   assert.equal(second.entered, false);
+  assert.equal(second.secretFound, false);
+});
+test('old eight-field v1 saves migrate without changing settings or progress', () => {
+  for (let stage = 0; stage <= 4; stage++) {
+    const state = atStage(stage);
+    state.entered = true;
+    state.settings = { ...state.settings, language: 'en', volume: .61, lighting: 'night' };
+    const legacy = JSON.parse(serializeSave(state)); delete legacy.secretFound;
+    assert.equal(Object.keys(legacy).length, 8);
+    assert.deepEqual(parseSave(JSON.stringify(legacy)), state);
+    delete legacy.settings.volume;
+    assert.deepEqual(parseSave(JSON.stringify(legacy)), { ...state, settings: { ...state.settings, volume: .3 } });
+    legacy.unrecognized = false;
+    assert.equal(parseSave(JSON.stringify(legacy)), null);
+  }
+});
+test('manual QA legacy fixtures are valid two-mechanism saves outside the bundle', () => {
+  for (const [name, volume, language] of [['with-volume', .42, 'en'], ['without-volume', .3, 'ru']] as const) {
+    const raw = readFileSync(new URL(`../qa/legacy-v1-${name}.json`, import.meta.url), 'utf8');
+    assert.equal(Object.hasOwn(JSON.parse(raw), 'secretFound'), false);
+    const migrated = parseSave(raw);
+    assert.ok(migrated);
+    assert.equal(migrated.stage, 2);
+    assert.equal(migrated.settings.volume, volume);
+    assert.equal(migrated.settings.language, language);
+    assert.equal(migrated.secretFound, false);
+  }
+});
+test('secret discovery is optional, idempotent and survives save export/import at every stage', () => {
+  for (let stage = 0; stage <= 4; stage++) {
+    const before = atStage(stage), found = gameReducer(before, { type: 'DISCOVER_SECRET' });
+    assert.deepEqual(found, { ...before, secretFound: true });
+    assert.equal(gameReducer(found, { type: 'DISCOVER_SECRET' }), found);
+    assert.deepEqual(parseSave(serializeSave(found)), found);
+    assert.deepEqual(gameReducer(before, { type: 'REPLACE', state: found }), found);
+    const reset = gameReducer(found, { type: 'RESET' });
+    assert.equal(reset.secretFound, false);
+    assert.equal(reset.stage, 0);
+    assert.equal(gameReducer(reset, { type: 'DISCOVER_SECRET' }).secretFound, true);
+  }
+});
+test('discovery migration accepts only the exact optional boolean field', () => {
+  const state = atStage(2);
+  for (const value of [null, 0, 1, 'true', [], {}, { secretDoor: true }])
+    assert.equal(parseSave(JSON.stringify({ ...state, secretFound: value })), null);
+  for (const value of [{ ...state, discoveries: { secretDoor: true } }, { ...state, secretFound: true, extra: false },
+    { ...state, settings: { ...state.settings, secretFound: true } }]) assert.equal(parseSave(JSON.stringify(value)), null);
 });
 test('legacy v1 volume migration preserves progress and rejects malformed volume', () => {
   const state = atStage(2);
@@ -112,6 +160,7 @@ test('corrupt, missing, unknown-version, and out-of-order saves are rejected', (
   for (const value of invalid) assert.equal(parseSave(JSON.stringify(value)), null, JSON.stringify(value));
   for (const raw of ['', '{', 'undefined', ' '.repeat(16385)]) assert.equal(parseSave(raw), null);
   for (const key of Object.keys(base)) {
+    if (key === 'secretFound') continue; // The one deliberately additive v1 field.
     const value = { ...base } as Record<string, unknown>; delete value[key];
     assert.equal(parseSave(JSON.stringify(value)), null);
   }
@@ -125,8 +174,23 @@ test('reset preserves preferences; validated replacement cannot admit corrupt im
   assert.deepEqual(gameReducer(reset, { type: 'REPLACE', state: completed }), completed);
 });
 
-test('entry labels use LUMA in both languages and obsolete wording is absent', () => {
+test('arrival branding uses LUMA in both languages, without obsolete pig branding', () => {
   assert.equal(copy.ru.enter, '\u0412\u043e\u0439\u0442\u0438 \u0432 \u043c\u0438\u0440 LUMA');
   assert.equal(copy.en.enter, 'Enter the world of LUMA');
-  assert.doesNotMatch(JSON.stringify(copy), /\u0441\u0432\u0438\u043d|\bpig(?:s)?\b|\bswine\b/i);
+  for (const language of ['ru', 'en'] as const) {
+    const { enter, eyebrow, tagline, preparing } = copy[language];
+    assert.doesNotMatch(JSON.stringify({ enter, eyebrow, tagline, preparing }), /\u0441\u0432\u0438\u043d|\bpig(?:s)?\b|\bswine\b/i);
+  }
+});
+test('living actions and feedback have complete Russian and English copy', () => {
+  assert.equal(copy.ru.living.secret, 'Кажется, здесь кто-то живёт');
+  for (const language of ['ru', 'en'] as const) {
+    const living = copy[language].living;
+    for (const action of ['pig', 'boat', 'chime', 'bird', 'door', 'ripple'] as const) {
+      assert.ok(living.actions[action].length > 3);
+      assert.ok(living.feedback[action].length > 3);
+    }
+    assert.ok(living.waiting.length > 3);
+    assert.ok(living.secret.length > 3);
+  }
 });

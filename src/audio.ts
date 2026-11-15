@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { audioPolicy, BIRD_PHRASES, birdDelay, choosePhrase, type IslandAudioOptions } from './audio-policy';
+import { audioPolicy, BIRD_PHRASES, birdDelay, choosePhrase, cueAllowed, type IslandAudioOptions, type IslandCue } from './audio-policy';
+import { synthesizeCue } from './audio-cues';
 
 type Voice = { source: AudioBufferSourceNode; gain: GainNode };
 type AudioOptions = IslandAudioOptions & { sceneFailed?: boolean };
 /** One context per mounted owner, created ONLY by unlockAudioFromGesture. */
-class IslandAudio {
+export class IslandAudio {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
   private buffers: AudioBuffer[] = [];
   private voices = new Set<Voice>();
+  private cueBuffers = new Map<string, AudioBuffer>();
+  private lastCue: Partial<Record<IslandCue, number>> = {};
+  private cueVariation = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private abort: AbortController | null = null;
   private loadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -47,7 +51,11 @@ class IslandAudio {
   unlock() {
     // Called synchronously from a real button click, before React commits enabled=true.
     if (document.hidden || this.options.reducedMotion || !this.options.sceneAvailable || this.options.sceneFailed) return;
-    if (this.context) { void this.context.resume().catch(() => this.dispose()); return; }
+    if (this.context) {
+      const context = this.context;
+      void context.resume().catch(() => { if (this.context === context) this.dispose(); });
+      return;
+    }
     try {
       const context = new AudioContext();
       this.context = context;
@@ -58,7 +66,10 @@ class IslandAudio {
           || (context.state === 'suspended' && !document.hidden && !this.intentionallySuspended)) this.dispose();
       };
       // resume must happen in the gesture's stack, not after fetch/decode.
-      void context.resume().catch(() => { this.report('Audio could not start. Try enabling sound again.'); this.dispose(); });
+      void context.resume().catch(() => {
+        if (this.context !== context) return;
+        this.report('Audio could not start. Try enabling sound again.'); this.dispose();
+      });
       const generation = ++this.generation;
       const abort = new AbortController(); this.abort = abort;
       this.report(null);
@@ -70,7 +81,7 @@ class IslandAudio {
         this.dispose();
       }, 15000);
       void Promise.all(['huamei', 'swale', 'wind'].map(async name => {
-        const response = await fetch(`${import.meta.env.BASE_URL}audio/${name}.ogg`, { signal: abort.signal });
+        const response = await fetch(`${import.meta.env?.BASE_URL ?? '/'}audio/${name}.ogg`, { signal: abort.signal });
         if (!response.ok) throw new Error(`Audio ${name}: HTTP ${response.status}`);
         return context.decodeAudioData(await response.arrayBuffer());
       })).then(buffers => {
@@ -91,6 +102,25 @@ class IslandAudio {
         this.report(error instanceof Error ? error.message : 'Audio unavailable'); this.dispose();
       });
     } catch { this.report('Audio is unavailable in this browser.'); this.dispose(); }
+  }
+
+  /** Only a successfully accepted scene reaction calls this; never unlocks audio. */
+  playCue(cue: IslandCue): boolean {
+    const context = this.context;
+    if (!context || context.state !== 'running' || !this.master || this.options.sceneFailed
+      || !cueAllowed(cue, context.currentTime, this.lastCue[cue], this.options, !document.hidden, true)) return false;
+    const variant = this.cueVariation++ % 3, key = `${cue}:${variant}`;
+    let buffer = this.cueBuffers.get(key);
+    if (!buffer) {
+      const samples = synthesizeCue(cue, context.sampleRate, variant);
+      buffer = context.createBuffer(1, samples.length, context.sampleRate);
+      buffer.getChannelData(0).set(samples);
+      this.cueBuffers.set(key, buffer);
+    }
+    this.lastCue[cue] = context.currentTime;
+    this.master.gain.setTargetAtTime(audioPolicy(this.options, !document.hidden, true).master, context.currentTime, .04);
+    this.voice(buffer, cue === 'pig' ? .5 : .42, false, 0, buffer.duration);
+    return true;
   }
 
   private mixKey = '';
@@ -148,7 +178,7 @@ class IslandAudio {
     ++this.generation; this.abort?.abort(); this.abort = null;
     if (this.loadTimer !== null) clearTimeout(this.loadTimer);
     this.loadTimer = null; this.intentionallySuspended = false;
-    this.stopVoices(); this.buffers = [];
+    this.stopVoices(); this.buffers = []; this.cueBuffers.clear(); this.lastCue = {};
     const context = this.context; this.context = null;
     this.master?.disconnect(); this.master = null;
     if (context) { context.onstatechange = null; if (context.state !== 'closed') void context.close().catch(() => {}); }
@@ -167,5 +197,6 @@ export function useIslandAudio(options: AudioOptions) {
   }, []);
   useEffect(() => { owner.current?.update(options); }, [options.enabled, options.volume, options.stage, options.lighting, options.reducedMotion, options.sceneAvailable, options.sceneFailed]);
   const unlockAudioFromGesture = useCallback(() => owner.current?.unlock(), []);
-  return { unlockAudioFromGesture, audioError };
+  const playCue = useCallback((cue: IslandCue) => owner.current?.playCue(cue) ?? false, []);
+  return { unlockAudioFromGesture, playCue, audioError };
 }

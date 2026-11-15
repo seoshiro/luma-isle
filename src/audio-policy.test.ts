@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { audioPolicy, birdDelay, BIRD_PHRASES, choosePhrase, type IslandAudioOptions } from './audio-policy.ts';
+import { audioPolicy, birdDelay, BIRD_PHRASES, choosePhrase, cueAllowed, CUE_COOLDOWN, type IslandAudioOptions } from './audio-policy.ts';
 const base: IslandAudioOptions = { enabled: true, volume: .3, stage: 0, lighting: 'morning', reducedMotion: false, sceneAvailable: true };
 test('sound requires gesture, visible scene, explicit preference and normal motion', () => {
   assert.equal(audioPolicy(base, true, false).active, false);
@@ -25,4 +25,18 @@ test('five non-overlapping phrases and bounded sparse interval without immediate
       assert.notEqual(next, previous); assert.ok(next >= 0 && next < 5);
     }
   }
+});
+test('one-shots obey the same audio gates, finite times, stage and bounded cooldowns', () => {
+  for (const cue of ['pig', 'chime'] as const) {
+    const available = { ...base, stage: 4 as const };
+    assert.equal(cueAllowed(cue, 0, undefined, available, true, true), true);
+    assert.equal(cueAllowed(cue, 1, 0, available, true, true), false);
+    assert.equal(cueAllowed(cue, CUE_COOLDOWN[cue], 0, available, true, true), true);
+    assert.equal(cueAllowed(cue, NaN, undefined, available, true, true), false);
+    assert.equal(cueAllowed(cue, 0, undefined, available, false, true), false);
+    assert.equal(cueAllowed(cue, 0, undefined, available, true, false), false);
+    for (const patch of [{ enabled: false }, { volume: 0 }, { reducedMotion: true }, { sceneAvailable: false }])
+      assert.equal(cueAllowed(cue, 0, undefined, { ...available, ...patch }, true, true), false);
+  }
+  for (const stage of [0, 1, 2, 3] as const) assert.equal(cueAllowed('chime', 0, undefined, { ...base, stage }, true, true), false);
 });

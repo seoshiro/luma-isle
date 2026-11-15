@@ -6,6 +6,7 @@ import {checkGrounding,findGrounding,diskProbes,rectangleProbes,blockedBy,type G
 import {meadowGroundColor} from './ground-material';
 import {createGroundedPathFoundation,type PathFoundationDiagnostics} from './path-support';
 import {createSupportStoneMaterial} from './support-stone';
+import {clearTerrainProtrusions} from './terrain-clearance';
 
 export type GroundKind='tree'|'cypress'|'shrub'|'rock'|'lamp'|'bench'|'pot'|'flower';
 export interface GroundObjectSpec {kind:GroundKind;radius:number;id?:string;preferred?:SurfacePoint2;searchRadius?:number}
@@ -153,6 +154,7 @@ export function finalizeIslandGrounding(root:THREE.Group,garden:THREE.Group,slot
   const started=performance.now(),mainSource=terrainSources(slots.island),gardenSource=terrainSources(slots.gardenBase);
   const main=createTerrainSurface(mainSource.sources,{frame:root,minY:-.48,maxY:.6});
   const small=createTerrainSurface(gardenSource.sources,{frame:garden,minY:-.19,maxY:.24,cellSize:.2});
+  if(mainSource.loaded)root.userData.terrainClearance=clearTerrainProtrusions(mainSource.sources,main,root,[...pathMasks(MAIN_PATHS),{id:'keeper-clear-ground',kind:'box',center:[2.92,1.24],halfSize:[.45,.95]}]);
   const rawMain=createTerrainSurface(mainSource.sources,{frame:root,minY:-6,maxY:.6,minNormalY:.05,componentPolicy:'all',minComponentArea:0});
   const rawSmall=createTerrainSurface(gardenSource.sources,{frame:garden,minY:-2.3,maxY:.24,minNormalY:.05,componentPolicy:'all',minComponentArea:0,cellSize:.2});
   const report:GroundingReport={records:[],unplaced:[],pathSupports:0,pathUnsupported:[],pathFoundations:[],milliseconds:0,surfaces:{main:main.faces.length,garden:small.faces.length},source:{main:mainSource.loaded?'loaded':'procedural',garden:gardenSource.loaded?'loaded':'procedural'}};
@@ -162,6 +164,7 @@ export function finalizeIslandGrounding(root:THREE.Group,garden:THREE.Group,slot
   const gardenMasks:GroundMask[]=[...pathMasks(GARDEN_PATHS),{id:'garden-arch',kind:'box',center:[0,.15],halfSize:[1.05,.55]}];
   const supportMaterial=createSupportStoneMaterial();
   const soilMaterial=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1});
+  const livingReserves:GroundMask[]=[{id:'living-boat-bypass',kind:'path',points:[[-3.9,1.15],[-2.5,1.65],[-2.45,2.25],[-2.65,2.7],[-4,2.92]],width:.54},{id:'living-keeper-reserve',kind:'box',center:[2.92,1.24],halfSize:[.45,.95]}];
   const frames=[{frame:root,surface:main,raw:rawMain,masks:mainMasks},{frame:garden,surface:small,raw:rawSmall,masks:gardenMasks}];
   for(const {frame,surface,raw,masks}of frames){
     const objects:THREE.Object3D[]=[];frame.traverse(o=>{if(o.userData.groundObject&&(frame===garden||!garden.getObjectById(o.id)))objects.push(o);});
@@ -176,7 +179,7 @@ export function finalizeIslandGrounding(root:THREE.Group,garden:THREE.Group,slot
       const contacts:SurfacePoint3[]=tree?.contacts??(spec.kind==='bench'?[[-.6,-.02,-.15],[.6,-.02,-.15],[-.6,-.02,.15],[.6,-.02,.15]]:spec.kind==='lamp'||spec.kind==='pot'?diskProbes(spec.kind==='pot'?.13:.17,.045).map(([x,z])=>[x,0,z] as SurfacePoint3):[[0,0,0]]);
       const footprint=spec.kind==='bench'?rectangleProbes(.8,.35,.18):diskProbes(radius,Math.max(.09,radius/3));
       const center:SurfacePoint2=spec.preferred??[object.position.x,object.position.z];
-      const ownMasks=masks.filter(mask=>!(spec.kind==='bench'&&mask.id==='bench-clearance'));
+      const ownMasks=[...masks.filter(mask=>!(spec.kind==='bench'&&mask.id==='bench-clearance')),...(frame===root&&spec.kind==='shrub'?livingReserves:[])];
       // A crown may overhang a route, but must never occupy the garden arch itself.
       const extraMasks:GroundMask[]=[];
       const crownExclusions=tree&&frame===root?[{mask:{id:'bridge-crown-clearance',kind:'polygon' as const,points:BRIDGE.sweep},padding:tree.crownRadius+.3}]:[];
@@ -199,6 +202,17 @@ export function finalizeIslandGrounding(root:THREE.Group,garden:THREE.Group,slot
       }
       report.records.push({id:spec.id!,kind:spec.kind,from,to:object.position.toArray(),supported:result.supported,reason:result.reason,contactGap:result.contactGap,footprintRadius:radius,...(spec.kind==='lamp'||spec.kind==='pot'?{supportPad,footContacts:contacts.map(([x,y,z])=>[x+object.position.x,y+object.position.y,z+object.position.z] as SurfacePoint3)}:{})});
       if(spec.kind!=='tree'&&spec.kind!=='flower')staticObjects.push(object);
+    }
+    if(frame===root){
+      // Keep the furniture/tree baseline intact. Only this small cypress conflicts
+      // with the new bypass; relocate it after all original placements are fixed.
+      const object=objects.find(o=>o.userData.groundObject?.id==='cypress:-5.400,4.300');
+      if(object){const spec=object.userData.groundObject as GroundObjectSpec,record=report.records.find(r=>r.id===spec.id)!;
+        const result=findGrounding(surface,{center:[-2.45,-.25],footprint:diskProbes(spec.radius,.12),contacts:[[0,0,0]],masks:[...masks.filter(m=>m.id!==spec.id),...livingReserves],clearance:.04,maxSlope:.6,maxHeightRange:.24,maxContactGap:.3},{radius:3,step:.16,seed:'living-cypress'});
+        if(result.supported){object.position.copy(result.position);const index=masks.findIndex(m=>m.id===spec.id);if(index>=0)masks[index]={id:spec.id!,kind:'circle',center:[result.position.x,result.position.z],radius:spec.radius+.06};record.to=object.position.toArray();record.reason=result.reason;record.supported=true;record.contactGap=result.contactGap;}
+        else root.userData.livingBypassBlocked=true;
+      }
+      masks.push(...livingReserves);
     }
     batchGroundDecor(frame,staticObjects);
   }

@@ -1,7 +1,10 @@
 import * as THREE from 'three';
+import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {markGroundObject} from './island-grounding';
 
-export interface NatureOptions { reducedMotion?: boolean; quality?: 'low'|'medium'|'high'; finalReveal?: boolean }
+export interface NatureOptions { reducedMotion?: boolean; quality?: 'low'|'medium'|'high'; finalReveal?: boolean; time?:number }
+/** Root-space foot contact and an already collision-checked descent corridor. */
+export interface BirdPerch { id:string; position:THREE.Vector3; yaw:number; approach:THREE.Vector3[] }
 const TAU = Math.PI * 2;
 
 /** Both flight envelopes stay outside the island or above its tallest roofs. */
@@ -38,14 +41,76 @@ export function createNature(root: THREE.Group, garden: THREE.Group) {
   const wingGeometry = new THREE.BufferGeometry();
   wingGeometry.setAttribute('position', new THREE.Float32BufferAttribute([0,0,0, .34,.015,-.07, .22,0,.11, .07,0,.14],3));
   wingGeometry.setIndex([0,1,2,0,2,3]); wingGeometry.computeVertexNormals();
-  const birdMaterial = new THREE.MeshStandardMaterial({color:'#eee4cf',roughness:1,side:THREE.DoubleSide});
+  const birdMaterial = new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,side:THREE.DoubleSide});
   const wingMaterial = new THREE.MeshStandardMaterial({color:'#60766b',roughness:1,side:THREE.DoubleSide});
+  const beakGeometry=new THREE.ConeGeometry(.023,.085,5);beakGeometry.rotateX(Math.PI/2);
+  const feetGeometry=new THREE.CylinderGeometry(.008,.008,.065,4);
+  const toeGeometry=new THREE.BoxGeometry(.014,.012,.07);
+  const feetParts=[-1,1].flatMap(side=>[feetGeometry.clone().translate(side*.032,.041,0),toeGeometry.clone().translate(side*.032,.006,.018)]);
+  const pairedFeetGeometry=mergeGeometries(feetParts)!;
+  feetParts.forEach(part=>part.dispose());feetGeometry.dispose();toeGeometry.dispose();
+  const colored=(geometry:THREE.BufferGeometry,color:string)=>{const g=geometry.index?geometry.toNonIndexed():geometry.clone();g.deleteAttribute('uv');const c=new THREE.Color(color),values=new Float32Array(g.getAttribute('position').count*3);for(let i=0;i<values.length;i+=3){values[i]=c.r;values[i+1]=c.g;values[i+2]=c.b;}g.setAttribute('color',new THREE.BufferAttribute(values,3));return g;};
+  const bodyParts=[colored(bodyGeometry.clone().scale(.065,.065,.17).translate(0,.13,0),'#eee4cf'),colored(pairedFeetGeometry,'#ad8453')];
+  const headParts=[colored(bodyGeometry.clone().scale(.047,.047,.047),'#eee4cf'),colored(beakGeometry.clone().translate(0,0,.068),'#ad8453')];
+  const standingGeometry=mergeGeometries(bodyParts)!,headGeometry=mergeGeometries(headParts)!;[...bodyParts,...headParts,bodyGeometry,pairedFeetGeometry,beakGeometry].forEach(g=>g.dispose());
+  const visitorMaterial=birdMaterial.clone(),visitorWingMaterial=wingMaterial.clone();visitorMaterial.transparent=true;visitorWingMaterial.transparent=true;
   const flock = Array.from({length:8},(_,index)=>{
     const bird = new THREE.Group(); bird.name = `Island bird ${index+1}`; birds.add(bird);
-    const body = new THREE.Mesh(bodyGeometry,birdMaterial);body.scale.set(.065,.065,.17);bird.add(body);
-    const wings = [-1,1].map(side=>{const pivot=new THREE.Group();const wing=new THREE.Mesh(wingGeometry,wingMaterial);wing.scale.x=side;pivot.add(wing);bird.add(pivot);return pivot;});
-    return {bird,wings};
+    const body = new THREE.Mesh(standingGeometry,index===0?visitorMaterial:birdMaterial);bird.add(body);
+    const head=new THREE.Group();head.position.set(0,.2,.11);bird.add(head);
+    head.add(new THREE.Mesh(headGeometry,index===0?visitorMaterial:birdMaterial));
+    const wings = [-1,1].map(side=>{const pivot=new THREE.Group();pivot.position.y=.14;const wing=new THREE.Mesh(wingGeometry,index===0?visitorWingMaterial:wingMaterial);wing.scale.x=side;pivot.add(wing);bird.add(pivot);return pivot;});
+    return {bird,wings,head};
   });
+
+  // One existing flock member visits supports; the remaining seven retain their routes.
+  const birdHits:THREE.Mesh[]=[];
+  const hit=new THREE.Mesh(new THREE.SphereGeometry(.23,6,4),new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false,colorWrite:false}));
+  hit.position.y=.16;hit.visible=false;hit.userData.livingAction='bird';hit.userData.birdIndex=0;flock[0].bird.add(hit);birdHits.push(hit);
+  let perches:BirdPerch[]=[],configured=false,perchIndex=0,current:BirdPerch|undefined;
+  let phase:'flying'|'arriving'|'perched'|'departing'|'joining'='flying';
+  let clock=0,nextVisit=10,restAge=0,cooldownUntil=0,reactionUntil=0,reduced=false,highlighted=false;
+  let route:THREE.Vector3[]=[],segment=0,segmentAge=0,joinAge=0;let reducedSettle:number|null=null;
+  const joinStart=new THREE.Vector3();
+  function restAtFirstPerch(){if(!perches.length)return;current=perches[0];perchIndex=1;phase='perched';restAge=0;flock[0].bird.position.copy(current.position);flock[0].bird.rotation.set(0,current.yaw,0);hit.visible=true;}
+  function setPerches(values:BirdPerch[]){
+    if(configured)return;configured=true;
+    perches=values.filter(p=>p.approach.length>0&&p.approach[0].y>=8.8&&[p.position,...p.approach].every(v=>[v.x,v.y,v.z].every(Number.isFinite))&&Number.isFinite(p.yaw)).map(p=>({...p,position:p.position.clone(),approach:p.approach.map(v=>v.clone())}));restAtFirstPerch();
+  }
+  function beginRoute(points:THREE.Vector3[],state:'arriving'|'departing'){
+    route=[flock[0].bird.position.clone(),...points.map(p=>p.clone())];segment=0;segmentAge=0;phase=state;hit.visible=false;
+  }
+  function depart(){if(current)beginRoute([...current.approach].reverse(),'departing');}
+  function birdAvailable(time:number){return phase==='perched'&&hit.visible&&time>=cooldownUntil;}
+  function flushBird(time:number,index=0){
+    if(index!==0||!birdAvailable(time))return false;
+    cooldownUntil=time+5;reactionUntil=clock+.8;
+    if(!reduced)depart();
+    return true;
+  }
+  function highlightBird(enabled:boolean){highlighted=enabled;}
+  function resetBirds(){
+    phase='flying';current=undefined;route=[];segment=0;segmentAge=0;joinAge=0;clock=0;nextVisit=10;restAge=0;cooldownUntil=0;reactionUntil=0;highlighted=false;hit.visible=false;
+    triggered=false;revealAge=0;flightTime=0;reducedSettle=null;visitorMaterial.opacity=1;visitorWingMaterial.opacity=1;restAtFirstPerch();
+  }
+  function moveVisitor(dt:number){
+    const {bird}=flock[0];
+    if(phase==='arriving'||phase==='departing'){
+      const a=route[segment],b=route[segment+1];
+      if(!b)return;
+      const duration=Math.max(.65,a.distanceTo(b)/.7);segmentAge=Math.min(duration,segmentAge+dt);
+      const f=THREE.MathUtils.smootherstep(segmentAge,0,duration);bird.position.lerpVectors(a,b,f);
+      // Feet remain upright; settle the heading without translating the contact point.
+      const yaw=phase==='arriving'&&segment===route.length-2&&current?current.yaw:Math.atan2(b.x-a.x,b.z-a.z);
+      bird.rotation.set(0,bird.rotation.y+Math.atan2(Math.sin(yaw-bird.rotation.y),Math.cos(yaw-bird.rotation.y))*Math.min(1,dt*3),0);
+      if(segmentAge>=duration){segment++;segmentAge=0;if(segment>=route.length-1){if(phase==='arriving'){phase='perched';restAge=0;bird.position.copy(current!.position);bird.rotation.set(0,current!.yaw,0);}else{phase='joining';joinAge=0;joinStart.copy(bird.position);}}}
+    }else if(phase==='joining'){
+      joinAge=Math.min(10,joinAge+dt);const target=birdPosition(0,flightTime);bird.position.copy(joinStart).lerp(target,THREE.MathUtils.smootherstep(joinAge,0,10));
+      if(joinAge>=10){phase='flying';nextVisit=clock+32;}
+    }else if(phase==='perched'){
+      bird.position.copy(current!.position);bird.rotation.set(0,current!.yaw,0);restAge+=dt;if(restAge>20)depart();
+    }
+  }
 
   const blooms = new THREE.Group(); blooms.name='Garden opening flowers'; blooms.userData.dynamic=true; garden.add(blooms);
   const petalGeometry = new THREE.SphereGeometry(1,7,5);
@@ -65,6 +130,10 @@ export function createNature(root: THREE.Group, garden: THREE.Group) {
   const light=new THREE.PointLight('#ffe1a1',0,5,2);light.position.set(0,1.65,.6);garden.add(light);
   let triggered=false,revealAge=0,flightTime=0;
   function update(dt:number,stage:number,options:NatureOptions){
+    const step=Math.max(0,Math.min(dt,.1));clock=options.time??clock+step;
+    const nextReduced=!!options.reducedMotion;if(nextReduced&&!reduced&&phase!=='perched'&&perches.length)reducedSettle=0;reduced=nextReduced;
+    if(reducedSettle!==null){if(!reduced){reducedSettle=null;visitorMaterial.opacity=1;visitorWingMaterial.opacity=1;}else{const before=reducedSettle;reducedSettle+=step;if(before<.25&&reducedSettle>=.25){route=[];segment=0;segmentAge=0;restAtFirstPerch();}const opacity=reducedSettle<.25?1-reducedSettle/.25:Math.min(1,(reducedSettle-.25)/.25);visitorMaterial.opacity=opacity;visitorWingMaterial.opacity=opacity;if(reducedSettle>=.5)reducedSettle=null;}}
+
     if(stage<4){triggered=false;revealAge=0;}
     if(stage>=4&&options.finalReveal)triggered=true;
     if(triggered)revealAge=options.reducedMotion?8:Math.min(8,revealAge+Math.min(dt,.1));
@@ -72,19 +141,26 @@ export function createNature(root: THREE.Group, garden: THREE.Group) {
     const progress=THREE.MathUtils.smoothstep(revealAge,0,5);
     glowMaterial.opacity=progress*.065;light.intensity=progress*1.2;
     flowers.forEach((head,i)=>{const opening=THREE.MathUtils.smoothstep(revealAge, i*.09,3+i*.09);head.scale.set(.25+.75*opening,.55+.45*opening,.25+.75*opening);});
-    flock.forEach(({bird,wings},i)=>{
+    flock.forEach(({bird,wings,head},i)=>{
       bird.visible=options.quality!=='low'||i%4<2;
       const t=options.reducedMotion?0:flightTime;
       const age=options.reducedMotion?0:revealAge;
       const p=i>=4?gardenBirdPosition(i,t,age):birdPosition(i,t);
       const next=i>=4?gardenBirdPosition(i,t+.1,age+(triggered&&!options.reducedMotion?.1:0)):birdPosition(i,t+.1);
-      bird.position.copy(p);bird.lookAt(next);
-      bird.rotation.z=Math.sin(t*.2+i*.4)*.09;
-      const flap=options.reducedMotion?.18:Math.sin(t*5.2+i*.8)*.38+.12;
+      if(i!==0||phase==='flying'){
+        bird.position.copy(p);bird.lookAt(next);bird.rotation.z=Math.sin(t*.2+i*.4)*.09;
+        if(i===0&&perches.length&&!reduced&&clock>=nextVisit){current=perches[perchIndex++%perches.length];beginRoute([...current.approach,current.position],'arriving');}
+      }else if(!reduced)moveVisitor(step);
+      const resting=i===0&&phase==='perched';
+      head.rotation.set(resting&&!reduced?Math.max(0,Math.sin(clock*.55))*.38:0,resting?(reduced?0:Math.sin(clock*.7)*.4)+(highlighted?.12:0):0,0);
+      const reaction=i===0&&clock<reactionUntil?Math.sin((reactionUntil-clock)*Math.PI/.8)*.3:0;
+      const flap=resting?.04+reaction:(options.reducedMotion?.18:Math.sin(t*5.2+i*.8)*.38+.12);
+      wings.forEach(w=>w.scale.x=resting?.32:1);
       wings[0].rotation.z=-flap;wings[1].rotation.z=flap;
     });
+    hit.visible=phase==='perched'&&flock[0].bird.visible&&reducedSettle===null;
   }
-  return {update,birds};
+  return {update,birds,setPerches,birdHits,flushBird,birdAvailable,highlightBird,resetBirds};
 }
 
 /** Closed tubular ribbons remain dimensional from every orbit angle. */

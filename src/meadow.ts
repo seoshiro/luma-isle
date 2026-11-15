@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {islandWind} from './living-wind';
 import {surfaceRandom, type SurfaceHit} from './terrain-surface';
 
 export type MeadowQuality = 'low' | 'medium' | 'high';
@@ -39,7 +40,7 @@ export function meadowDetailScale(rank:number, distance:number, qualityFraction:
 }
 export function meadowWind(height:number, time:number, phase:number, reducedMotion:boolean) {
   const flex=Math.min(1,Math.max(0,height)/.13)**2;
-  return reducedMotion ? 0 : flex * (.011 * Math.sin(time * 1.35 + phase) + .003 * Math.sin(time * 2.1 + phase * .6));
+  return reducedMotion ? 0 : flex * islandWind(time).strength * (.011 * Math.sin(time * 1.35 + phase) + .003 * Math.sin(time * 2.1 + phase * .6));
 }
 
 /** Five curved, diamond-section blades form an opaque, dimensional tuft.
@@ -118,13 +119,13 @@ export function createMeadow(placements:readonly SurfaceHit[], options:MeadowOpt
   const fractions={low:.12,medium:.58,high:1,...options.qualityFractions};
   if(Object.values(fractions).some(value=>!Number.isFinite(value)||value<0||value>1))throw new Error('Invalid meadow quality fraction');
   const group=new THREE.Group();group.name='Surface-bound dimensional meadow';group.userData.dynamic=true;
-  const uniforms={meadowTime:{value:0},meadowWindEnabled:{value:options.reducedMotion?0:1},meadowQuality:{value:fractions[options.quality??'high']},meadowCamera:{value:new THREE.Vector3()},meadowNear:{value:near},meadowFar:{value:far}};
+  const uniforms={meadowTime:{value:0},meadowGust:{value:islandWind(0).strength},meadowWindEnabled:{value:options.reducedMotion?0:1},meadowQuality:{value:fractions[options.quality??'high']},meadowCamera:{value:new THREE.Vector3()},meadowNear:{value:near},meadowFar:{value:far}};
   const material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,metalness:0});
   material.customProgramCacheKey=()=> 'luma-dimensional-meadow-v2';
   material.onBeforeCompile=shader=>{
     Object.assign(shader.uniforms,uniforms);
     shader.vertexShader=`attribute vec3 meadowVariation;
-uniform float meadowTime, meadowWindEnabled, meadowQuality, meadowNear, meadowFar;
+uniform float meadowTime, meadowGust, meadowWindEnabled, meadowQuality, meadowNear, meadowFar;
 uniform vec3 meadowCamera;
 ${shader.vertexShader}`;
     shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
@@ -134,7 +135,7 @@ float meadowCoverage = mix(meadowDistanceWeight * meadowQuality, .22 + .78 * mea
 float meadowScale = smoothstep(meadowVariation.x - .13, meadowVariation.x + .13, meadowCoverage);
 transformed *= meadowScale;
 float meadowFlex = clamp(position.y / .13, 0.0, 1.0);
-float meadowBend = meadowFlex * meadowFlex * meadowWindEnabled * meadowScale;
+float meadowBend = meadowFlex * meadowFlex * meadowWindEnabled * meadowScale * meadowGust;
 transformed.x += meadowBend * (.011 * sin(meadowTime * 1.35 + meadowVariation.y) + .003 * sin(meadowTime * 2.1 + meadowVariation.y * .6));
 transformed.z += meadowBend * .006 * sin(meadowTime * 1.05 + meadowVariation.y);
 `);
@@ -202,6 +203,7 @@ transformed.z += meadowBend * .006 * sin(meadowTime * 1.05 + meadowVariation.y);
   function update(timeSeconds:number,cameraPositionLocal:THREE.Vector3,state:{quality?:MeadowQuality;reducedMotion?:boolean}={}) {
     if(stats.disposed)return;
     uniforms.meadowTime.value=state.reducedMotion?0:timeSeconds;
+    uniforms.meadowGust.value=islandWind(timeSeconds,!!state.reducedMotion).strength;
     uniforms.meadowWindEnabled.value=(state.reducedMotion??options.reducedMotion)?0:1;
     uniforms.meadowQuality.value=fractions[state.quality??options.quality??'high'];
     applyQuality(state.quality??options.quality??'high',cameraPositionLocal);

@@ -19,6 +19,11 @@ const poses: Pose[] = [
   { id: '11-bridge-from-observatory', label: '11 Bridge from observatory', position: [-.1,4.2,-1], target: [3.35,.6,-.3] },
   { id: '12-bridge-low-side', label: '12 Bridge low side', position: [5.6,1.35,-.1], target: [2.35,1.1,-1.45] },
   { id: '13-bench-side', label: '13 Bench side', position: [6,2.2,3], target: [4,.5,4.8] },
+  { id: '14-island-keeper', label: '14 Little island keeper', position: [6,2.0,4.3], target: [2.80,.31,1.12] },
+  { id: '15-paper-boat-route', label: '15 Boat and water bypass', position: [-.9,6.8,-1.8], target: [-3.45,.15,1.1] },
+  { id: '16-arch-wind-chime', label: '16 Arch wind chime', position: [17.3,3.15,3.5], target: [13.9,2.0,-1.45] },
+  { id: '17-secret-cliff-door', label: '17 Secret cliff door', position: [-3.6,.6,-12.8], target: [-2,-.95,-7.47] },
+  { id: '18-quiet-bird-perch', label: '18 Quiet bird perch', position: [-2.78,5.4,.25], target: [-3.38,.4,-1.05] },
 ];
 export type SurfaceQaCommand = { type: 'pose'; index: number } | { type: 'orbit'; height: 'low'|'high' } | { type: 'stop'|'release'|'bridge'|'capture'|'benchmark'|'export'|'context-loss' };
 type Context = { state: GameState; zone: string|null; intro: boolean; photo: boolean; assetsReady: boolean; reducedMotion: boolean };

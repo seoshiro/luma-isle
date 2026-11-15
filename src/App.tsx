@@ -1,45 +1,66 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowLeft, ArrowRight, Camera, Check, ChevronLeft, ChevronRight, Download, HelpCircle, Menu, Moon, RotateCcw, Settings2, Sparkles, Sun, Sunset, Volume2, VolumeX, Waves, Wind, X, LockKeyhole, Telescope, Flower2 } from 'lucide-react';
-import IslandScene, { type SceneStatus } from './IslandScene';
+import { ArrowLeft, ArrowRight, Camera, Check, ChevronLeft, ChevronRight, HelpCircle, Menu, RotateCcw, Sparkles, Volume2, VolumeX, Waves, X, LockKeyhole, Telescope, Flower2 } from 'lucide-react';
+import IslandScene, { type SceneStatus, type SceneHandle } from './IslandScene';
 import { RecoveryScreen, SceneLoading, presentationCopy, useReducedMotion } from './RecoveryScreen';
 import { createInitialState, gameReducer, parseSave, serializeSave, STORAGE_KEY, getWaterFlow, type GameState, type GameAction, type Settings } from './game';
 import { copy } from './i18n';
 import { useIslandAudio } from './audio';
 import LiquidGlassNavigation from './LiquidGlassNavigation';
+import type { LivingAction, LivingAvailability, LivingEvent, LivingPresence } from './living-types';
+import { LivingControls } from './LivingControls';
+import { SettingsPanel } from './SettingsPanel';
 
 type Zone = 'water'|'workshop'|'observatory'|'lighthouse'|'garden'|null;
 type Aspect = 'wide'|'square'|'portrait';
 const zones: Exclude<Zone,null>[] = ['water','workshop','observatory','lighthouse','garden'];
 const puzzles = ['water','bridge','stars','lighthouse'] as const;
 const icons = [Waves, BridgeIcon, Telescope, BeaconIcon, Flower2];
+const quietLiving: LivingAvailability = { pig: false, boat: false, chime: false, bird: false, door: false, ripple: false };
 function BridgeIcon({size=22}:{size?:number}) {return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M2 20V8m20 12V8M2 13Q12 0 22 13M2 18Q12 5 22 18M7 9v5m5-7v5m5-3v5"/></svg>}
 function BeaconIcon({size=22}:{size?:number}) {return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M8 21h8l-2-12h-4ZM8 9h8V5H8ZM7 5l5-4 5 4M5 21h14M2 5h3m14 0h3M11 17h2"/></svg>}
 function Mark(){return <svg viewBox="0 0 100 35" aria-hidden="true"><path d="M14 28h72M29 27q-2-10 8-10 2-14 15-13 15 0 16 16 10-3 12 8" fill="currentColor"/><path d="M84 7v8m-4-4h8" stroke="currentColor" strokeWidth="1.4"/></svg>}
-function Modal({children,onClose,label}:{children:ReactNode;onClose:()=>void;label:string}) {
+function Modal({children,onClose,label,className=''}:{children:ReactNode;onClose:()=>void;label:string;className?:string}) {
  const ref=useRef<HTMLDivElement>(null);
  useEffect(()=>{const before=document.activeElement as HTMLElement;ref.current?.querySelector<HTMLElement>('button')?.focus();const key=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose();if(e.key==='Tab'){const els=ref.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input,select');if(!els?.length)return;const first=els[0],last=els[els.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}};document.addEventListener('keydown',key);return()=>{document.removeEventListener('keydown',key);before?.focus()}},[onClose]);
- return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><div className="modal" role="dialog" aria-modal="true" aria-label={label} ref={ref}>{children}</div></div>
+ return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><div className={`modal ${className}`} role="dialog" aria-modal="true" aria-label={label} ref={ref}>{children}</div></div>
 }
 function download(text:string,name:string){const url=URL.createObjectURL(new Blob([text],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 export default function App(){
  const [state,setState]=useState<GameState>(()=>{try{return parseSave(localStorage.getItem(STORAGE_KEY)||'')||createInitialState()}catch{return createInitialState()}});
  const [saveError,setSaveError]=useState(false),[sceneStatus,setSceneStatus]=useState<SceneStatus>('loading'),[sceneEpoch,setSceneEpoch]=useState(0),[highlightGate,setHighlightGate]=useState<number|null>(null),[announcement,setAnnouncement]=useState(''),[intro,setIntro]=useState(false),[zone,setZone]=useState<Zone>(null),[menu,setMenu]=useState(false),[photo,setPhoto]=useState(false),[aspect,setAspect]=useState<Aspect>('wide'),[hint,setHint]=useState(0),[confirm,setConfirm]=useState<'reset'|'import'|null>(null),[pending,setPending]=useState<GameState|null>(null),[notice,setNotice]=useState(''),[finalText,setFinalText]=useState(false);
- const sceneRef=useRef<{exportPng:(aspect:Aspect)=>void|Promise<void>;resetView:()=>void;replayMechanism:(zone:Zone)=>void}|null>(null),fileRef=useRef<HTMLInputElement>(null),priorStage=useRef(state.stage),finalSeen=useRef(state.stage===4);
+ const sceneRef=useRef<SceneHandle|null>(null),fileRef=useRef<HTMLInputElement>(null),priorStage=useRef(state.stage),finalSeen=useRef(state.stage===4);
+ const [livingEpoch,setLivingEpoch]=useState(0),[livingAvailable,setLivingAvailable]=useState<LivingAvailability>(quietLiving),[secretCaption,setSecretCaption]=useState(false);
+ const [livingPresent,setLivingPresent]=useState<LivingPresence>(quietLiving);
+ const [announcementVersion,setAnnouncementVersion]=useState(0);
+ const secretSeen=useRef(state.secretFound);secretSeen.current=state.secretFound;
  const ready=sceneStatus==='ready'||sceneStatus==='degraded', failed=sceneStatus==='unavailable'||sceneStatus==='context-lost';
  const reducedMotion=useReducedMotion(), p= presentationCopy[state.settings.language];
  const reportSceneStatus=useCallback((value:SceneStatus)=>setSceneStatus(value),[]);
  const retryScene=()=>{setSceneStatus('loading');setSceneEpoch(v=>v+1);setIntro(false);setPhoto(false);setMenu(false);setConfirm(null);setZone(null);setHighlightGate(null)};
  useEffect(()=>{if(failed){setIntro(false);setPhoto(false);setMenu(false);setConfirm(null);setZone(null);setHighlightGate(null)}},[failed]);
  const t=copy[state.settings.language],index=zone?zones.indexOf(zone):-1,solved=index>=0&&state.stage>index,locked=index>state.stage;
- const {unlockAudioFromGesture,audioError}=useIslandAudio({enabled:state.settings.sound,volume:state.settings.volume,stage:state.stage,lighting:state.settings.lighting,reducedMotion,sceneAvailable:ready&&!intro,sceneFailed:failed});
- const action=useCallback((a:GameAction)=>setState(s=>gameReducer(s,a)),[]);
+ const {unlockAudioFromGesture,playCue,audioError}=useIslandAudio({enabled:state.settings.sound,volume:state.settings.volume,stage:state.stage,lighting:state.settings.lighting,reducedMotion,sceneAvailable:ready&&state.entered&&!intro,sceneFailed:failed});
+ const action=useCallback((a:GameAction)=>{
+  if(a.type==='RESET'||a.type==='REPLACE'){setLivingEpoch(v=>v+1);setLivingAvailable(quietLiving);setSecretCaption(false);setAnnouncement('');sceneRef.current?.focusLiving(null)}
+  setState(s=>gameReducer(s,a));
+ },[]);
+ const onLivingEvent=useCallback((event:LivingEvent)=>{
+  if(!ready||!state.entered||intro||photo||menu||confirm||document.hidden)return;
+  if(event.cue==='pig'||event.cue==='chime')playCue(event.cue);
+  setAnnouncementVersion(value=>value+1);
+  if(event.discovery==='secretDoor'&&!secretSeen.current){secretSeen.current=true;action({type:'DISCOVER_SECRET'});setSecretCaption(true);setAnnouncement(t.living.secret)}
+  else setAnnouncement(t.living.feedback[event.action]);
+ },[ready,state.entered,intro,photo,menu,confirm,playCue,action,t]);
+ const livingAction:LivingAction|null=zone==='water'&&state.stage>0?'boat':zone==='workshop'?'pig':zone==='observatory'&&solved?'bird':zone==='garden'&&state.stage===4?'chime':null;
  const closeMenu=useCallback(()=>setMenu(false),[]),closeConfirm=useCallback(()=>{setConfirm(null);setPending(null)},[]);
  useEffect(()=>{try{localStorage.setItem(STORAGE_KEY,serializeSave(state));setSaveError(false)}catch{setSaveError(true)}document.documentElement.lang=state.settings.language},[state]);
  useEffect(()=>{if(state.stage>priorStage.current){setHint(0);setAnnouncement(t.solved[state.stage-1]);}priorStage.current=state.stage},[state.stage,t]);
  useEffect(()=>{if(!notice)return;const timer=setTimeout(()=>setNotice(''),6500);return()=>clearTimeout(timer)},[notice]);
  useEffect(()=>{if(zone==='garden'&&state.stage===4&&!finalSeen.current){finalSeen.current=true;setFinalText(true)}},[zone,state.stage]);
  useEffect(()=>{if(!finalText)return;const timer=setTimeout(()=>setFinalText(false),7000);return()=>clearTimeout(timer)},[finalText]);
- const selectZone=useCallback((z:Zone)=>{setZone(z);setHint(0);setHighlightGate(null)},[]);
+ useEffect(()=>{if(!secretCaption)return;const timer=setTimeout(()=>setSecretCaption(false),6000);return()=>clearTimeout(timer)},[secretCaption]);
+ useEffect(()=>{if(!ready||intro||photo||menu||confirm){sceneRef.current?.focusLiving(null);setSecretCaption(false)}},[ready,intro,photo,menu,confirm]);
+ const selectZone=useCallback((z:Zone)=>{sceneRef.current?.focusLiving(null);setZone(z);setHint(0);setHighlightGate(null)},[]);
  const setting=(settings:Partial<Settings>)=>action({type:'SET_SETTINGS',settings});
  const toggleSound=()=>{if(!state.settings.sound)unlockAudioFromGesture();setting({sound:!state.settings.sound})};
  const unlockSavedAudio=()=>{if(state.settings.sound)unlockAudioFromGesture()};
@@ -48,16 +69,16 @@ export default function App(){
  const capture=async()=>{try{await sceneRef.current?.exportPng(aspect)}catch{setNotice(t.captureError)}};
  const importFile=async(file?:File)=>{if(!file)return;if(file.size>16384){setNotice(t.invalid);return}try{const value=parseSave(await file.text());if(!value){setNotice(t.invalid);return}setPending(value);setConfirm('import')}catch{setNotice(t.invalid)}};
  return <main onPointerDown={unlockSavedAudio} onKeyDown={unlockSavedAudio} className={`world ${state.settings.lighting} ${zone?'focused':''} ${photo?'photo-mode':''}`}>
-  <div className="scene-shell" aria-hidden={!ready} inert={!ready}><IslandScene key={sceneEpoch} state={state} zone={zone} intro={intro} photo={photo} aspect={aspect} onReady={()=>{}} onStatus={reportSceneStatus} highlightGate={highlightGate} onZone={selectZone} onIntroComplete={finishIntro} onAction={action} sceneRef={sceneRef}/></div>
+  <div className="scene-shell" aria-hidden={!ready} inert={!ready}><IslandScene key={sceneEpoch} state={state} zone={zone} intro={intro} photo={photo} aspect={aspect} onReady={()=>{}} onStatus={reportSceneStatus} highlightGate={highlightGate} onZone={selectZone} onIntroComplete={finishIntro} onAction={action} onLivingEvent={onLivingEvent} onLivingAvailability={setLivingAvailable} onLivingPresence={setLivingPresent} livingEpoch={livingEpoch} interactionBlocked={menu||!!confirm} sceneRef={sceneRef}/></div>
   <div className="vignette" aria-hidden="true"/>
   {failed&&<RecoveryScreen language={state.settings.language} contextLost={sceneStatus==='context-lost'} saveHealthy={!saveError} onRetry={retryScene} onExport={()=>download(serializeSave(state),'luma-isle-save.json')}/>}
   {!failed&&!ready&&state.entered&&<SceneLoading language={state.settings.language}/>}
   {ready&&sceneStatus==='degraded'&&!intro&&<div className="degraded-note" role="status">{p.degraded}</div>}
-  <p className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">{announcement}</p>
+  <p className="visually-hidden" role="status" aria-live="polite" aria-atomic="true"><span key={announcementVersion}>{announcement}</span></p>
   {!failed&&!state.entered&&!intro&&<section className="arrival" aria-label="LUMA ISLE"><div className="arrival-top"><span>LUMA / 01</span><button className="text-button" onClick={()=>setting({language:state.settings.language==='ru'?'en':'ru'})}>{state.settings.language==='ru'?'EN':'RU'}</button></div><div className="arrival-center"><Mark/><p className="eyebrow">{t.eyebrow}</p><h1>LUMA ISLE</h1><div className="fine-line"><span>✧</span></div><p className="tagline">{t.tagline}</p><button className="enter-button" onClick={enter} disabled={!ready}>{ready?t.enter:t.preparing}{ready?<ArrowRight size={19}/>:<span className="loading-dot"/>}</button><p className="arrival-note">{state.settings.language==='ru'?'Четыре загадки. Один маленький мир.':'Four puzzles. One little world.'}</p></div><div className="arrival-bottom"><span>EST. ABOVE THE CLOUDS</span><span>✦</span><span>{state.settings.language==='ru'?'ЗАДЕРЖИСЬ НА МГНОВЕНИЕ':'STAY A LITTLE LONGER'}</span></div></section>}
   {ready&&intro&&<button className="pill skip" onClick={finishIntro}>{t.skip}<ArrowRight size={16}/></button>}
   {ready&&state.entered&&!intro&&!photo&&<>
-   <header className="topbar"><button className="brand" onClick={()=>selectZone(null)} aria-label={t.overview}><Mark/><span>LUMA ISLE</span><i/></button><div className="top-actions"><button className="icon-button sound-button" aria-label={`${t.sound}: ${state.settings.sound?t.on:t.off}`} aria-pressed={state.settings.sound} onClick={toggleSound}>{state.settings.sound?<Volume2 size={20}/>:<VolumeX size={20}/>}</button><button className="icon-button" aria-label={t.menu} onClick={()=>setMenu(true)}><Menu size={22}/></button></div></header>
+   <header className="topbar"><button className="brand" onClick={()=>selectZone(null)} aria-label={t.overview}><span>LUMA ISLE</span><i aria-hidden="true"/></button><div className="top-actions"><button className="icon-button sound-button" aria-label={`${t.sound}: ${state.settings.sound?t.on:t.off}`} aria-pressed={state.settings.sound} onClick={toggleSound}>{state.settings.sound?<Volume2 size={20}/>:<VolumeX size={20}/>}</button><button className="icon-button" aria-label={t.menu} onClick={()=>setMenu(true)}><Menu size={22}/></button></div></header>
    {zone&&<div className="zone-heading"><span className="eyebrow">{String(index+1).padStart(2,'0')} / LUMA ISLE</span><h2>{t.titles[index]}</h2></div>}
    {!zone&&<><div className="overview-caption"><span className="eyebrow">{t.journey}</span><h2>{state.stage===4?t.explore:t.objectives[state.stage]}</h2><p>{t.drag}</p></div><LiquidGlassNavigation items={zones.slice(0,4).map((z,i)=>{const Icon=icons[i];return {id:z,label:t.titles[i],icon:<Icon size={25}/>,onSelect:()=>selectZone(z)}})} stage={state.stage} progressLabel={t.progress} completedLabel={t.done} photoLabel={t.photo} onPhoto={()=>setPhoto(true)} quality={state.settings.quality} reducedMotion={reducedMotion}/>{state.stage===4&&<button className="garden-link pill" onClick={()=>selectZone('garden')}><Flower2 size={18}/>{t.titles[4]}<ArrowRight size={16}/></button>}</>}
    {zone&&<section className={`puzzle-panel ${locked?'locked':''} ${solved?'solved':''}`} aria-label={t.titles[index]}><div className="sheet-grip"/>
@@ -69,15 +90,17 @@ export default function App(){
     {hint>0&&<p className="hint-copy" aria-live="polite">{t.hints[index][Math.min(hint-1,1)]}</p>}
     </>}
     {solved&&index<4&&<button className="replay-mechanism text-button" onClick={()=>sceneRef.current?.replayMechanism(zone)}><RotateCcw size={15}/>{t.replayMovement}</button>}
+    {livingAction&&<LivingControls action={livingAction} secondary={zone==='workshop'?'door':zone==='water'?'ripple':null} available={livingAvailable} present={livingPresent} copy={t.living} onAction={value=>{if(!menu&&!confirm)sceneRef.current?.interactLiving(value)}} onFocus={value=>sceneRef.current?.focusLiving(value)}/>}
     <div className="panel-footer"><button className="text-button back-button" onClick={()=>selectZone(null)}><ArrowLeft size={17}/>{t.back}</button>{!solved&&!locked&&index<4&&(hint<2?<button className="small-pill" onClick={()=>setHint(h=>h+1)}><HelpCircle size={16}/>{t.hint}{hint>0?' 2':''}</button>:<button className="small-pill assist-button" title={t.assistNote} onClick={()=>action({type:'ASSIST',puzzle:puzzles[index]})}><Sparkles size={16}/>{t.assist}</button>)}{solved&&index<3&&<button className="small-pill" onClick={()=>selectZone(zones[index+1])}>{t.next}<ArrowRight size={16}/></button>}{solved&&index===3&&<button className="small-pill" onClick={()=>selectZone('garden')}>{t.titles[4]}<ArrowRight size={16}/></button>}{index===4&&<button className="small-pill" onClick={()=>setPhoto(true)}><Camera size={16}/>{t.photo}</button>}</div>
    </section>}
   </>}
   {ready&&photo&&<><div className={`photo-frame ${aspect}`} aria-hidden="true"><i/><i/><i/><i/></div><header className="photo-top"><span className="eyebrow">LUMA ISLE / {t.photo}</span><button className="icon-button" aria-label={t.close} onClick={()=>setPhoto(false)}><X size={20}/></button></header><section className="photo-toolbar"><label>{t.framing}<select value={aspect} onChange={e=>setAspect(e.target.value as Aspect)}><option value="wide">16:9 · {t.wide}</option><option value="square">1:1 · {t.square}</option><option value="portrait">3:4 · {t.portrait}</option></select></label><label>{t.camera}<select value={zone??''} onChange={e=>selectZone((e.target.value||null) as Zone)}><option value="">{t.overview}</option>{zones.filter((_,i)=>i<4||state.stage===4).map((z)=><option key={z} value={z}>{t.titles[zones.indexOf(z)]}</option>)}</select></label><label>{t.lighting}<select value={state.settings.lighting} onChange={e=>setting({lighting:e.target.value as Settings['lighting']})}><option value="morning">{t.morning}</option><option value="sunset">{t.sunset}</option><option value="night">{t.night}</option></select></label><button className="primary" onClick={capture}><Camera size={18}/>{t.png}</button></section></>}
   {ready&&finalText&&<p className="final-quote" role="status" aria-live="polite">{t.final}</p>}
+  {ready&&state.entered&&!intro&&!photo&&!menu&&!confirm&&secretCaption&&<p className="discovery-caption" aria-hidden="true">{t.living.secret}</p>}
   {ready&&notice&&state.entered&&!intro&&<div className="toast" role="status">{notice}<button aria-label={t.close} onClick={()=>setNotice('')}><X size={16}/></button></div>}
   {saveError&&!failed&&<div className="save-warning" role="status">{t.saveError}</div>}
-  {ready&&menu&&!confirm&&<Modal label={t.settings} onClose={closeMenu}><div className="modal-title"><div><span className="eyebrow">LUMA ISLE</span><h2>{t.settings}</h2></div><button className="icon-button" onClick={closeMenu} aria-label={t.close}><X size={20}/></button></div><div className="setting-row"><span>{t.language}</span><div className="segmented">{(['ru','en'] as const).map(l=><button key={l} className={state.settings.language===l?'selected':''} onClick={()=>setting({language:l})}>{l.toUpperCase()}</button>)}</div></div><div className="setting-row"><span>{t.sound}</span><button className={`toggle ${state.settings.sound?'enabled':''}`} role="switch" aria-checked={state.settings.sound} aria-label={t.sound} onClick={toggleSound}><i/></button></div><div className="volume-setting"><label htmlFor="master-volume">{p.volume}<output>{Math.round(state.settings.volume*100)}%</output></label><input id="master-volume" type="range" min="0" max="1" step="0.01" value={state.settings.volume} onChange={e=>setting({volume:+e.target.value})}/>{audioError&&<p role="status">{p.audioError}</p>}</div><div className="setting-block"><span>{t.lighting}</span><div className="segmented full">{(['morning','sunset','night'] as const).map((l,i)=>{const Icon=[Sun,Sunset,Moon][i];return <button key={l} className={state.settings.lighting===l?'selected':''} onClick={()=>setting({lighting:l})}><Icon size={16}/>{t[l]}</button>})}</div></div><div className="setting-block"><span>{t.quality}</span><div className="segmented full">{(['low','medium','high'] as const).map(l=><button key={l} className={state.settings.quality===l?'selected':''} onClick={()=>setting({quality:l})}>{t[l]}</button>)}</div></div><div className="menu-links"><button onClick={()=>{closeMenu();selectZone(null);setIntro(true)}}><Wind size={18}/>{t.replay}<ArrowRight size={16}/></button><button onClick={()=>{download(serializeSave(state),'luma-isle-save.json');setNotice(t.downloaded)}}><Download size={18}/>{t.export}<ArrowRight size={16}/></button><button onClick={()=>fileRef.current?.click()}><Settings2 size={18}/>{t.import}<ArrowRight size={16}/></button><button className="reset-link" onClick={()=>setConfirm('reset')}><RotateCcw size={18}/>{t.reset}<ArrowRight size={16}/></button></div><p className="save-note">{saveError?t.saveError:t.saved}</p></Modal>}
-  {ready&&confirm&&<Modal label={confirm==='reset'?t.resetTitle:t.importTitle} onClose={closeConfirm}><div className="confirm-content"><RotateCcw size={27}/><h2>{confirm==='reset'?t.resetTitle:t.importTitle}</h2><p>{confirm==='reset'?t.resetBody:t.importBody}</p><button className="primary" onClick={()=>{if(confirm==='reset'){action({type:'RESET'});finalSeen.current=false}else if(pending){setState(pending);finalSeen.current=pending.stage===4}setZone(null);setHint(0);setIntro(false);setPhoto(false);setFinalText(false);setNotice('');closeConfirm();closeMenu()}}>{confirm==='reset'?t.confirm:t.importConfirm}</button><button className="text-button" onClick={closeConfirm}>{t.cancel}</button></div></Modal>}
+  {ready&&menu&&!confirm&&<Modal label={t.settings} onClose={closeMenu} className="settings-dialog"><SettingsPanel settings={state.settings} saveError={saveError} audioError={audioError} onChange={setting} onToggleSound={toggleSound} onClose={closeMenu} onReplay={()=>{closeMenu();selectZone(null);setIntro(true)}} onExport={()=>{download(serializeSave(state),'luma-isle-save.json');setNotice(t.downloaded)}} onImport={()=>fileRef.current?.click()} onReset={()=>setConfirm('reset')}/></Modal>}
+  {ready&&confirm&&<Modal label={confirm==='reset'?t.resetTitle:t.importTitle} onClose={closeConfirm}><div className="confirm-content"><RotateCcw size={27}/><h2>{confirm==='reset'?t.resetTitle:t.importTitle}</h2><p>{confirm==='reset'?t.resetBody:t.importBody}</p><button className="primary" onClick={()=>{if(confirm==='reset'){action({type:'RESET'});finalSeen.current=false}else if(pending){action({type:'REPLACE',state:pending});finalSeen.current=pending.stage===4}setZone(null);setHint(0);setIntro(false);setPhoto(false);setFinalText(false);setNotice('');closeConfirm();closeMenu()}}>{confirm==='reset'?t.confirm:t.importConfirm}</button><button className="text-button" onClick={closeConfirm}>{t.cancel}</button></div></Modal>}
   <input ref={fileRef} className="visually-hidden" aria-hidden="true" type="file" accept="application/json,.json" tabIndex={-1} onChange={e=>{void importFile(e.target.files?.[0]);e.target.value=''}}/>
  </main>
 }

@@ -24,10 +24,13 @@ export interface GameState {
   lighthouseAngle: number;
   settings: Settings;
   entered: boolean;
+  /** An optional discovery, never a fifth mechanism or a progress requirement. */
+  secretFound: boolean;
 }
 export type GameAction =
   | { type: 'REPLACE'; state: GameState }
   | { type: 'ENTER' }
+  | { type: 'DISCOVER_SECRET' }
   | { type: 'TOGGLE_GATE'; index: number }
   | { type: 'ROTATE_DISK'; index: number }
   | { type: 'ROTATE_RING'; index: number }
@@ -37,7 +40,7 @@ export type GameAction =
   | { type: 'RESET' };
 export function createInitialState(): GameState {
   return { version: SAVE_VERSION, stage: 0, gates: [false, false, false], disks: [1, 2, 3], rings: [2, 5], lighthouseAngle: 0,
-    settings: { language: 'ru', sound: false, volume: 0.3, quality: 'medium', lighting: 'morning' }, entered: false };
+    settings: { language: 'ru', sound: false, volume: 0.3, quality: 'medium', lighting: 'morning' }, entered: false, secretFound: false };
 }
 const equal = (a: readonly unknown[], b: readonly unknown[]) => a.length === b.length && a.every((v, i) => v === b[i]);
 const indexValid = (index: number, length: number) => Number.isInteger(index) && index >= 0 && index < length;
@@ -64,6 +67,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'REPLACE': return parseSave(serializeSave(action.state)) ?? state;
     case 'ENTER': return state.entered ? state : { ...state, entered: true };
+    case 'DISCOVER_SECRET': return state.secretFound ? state : { ...state, secretFound: true };
     case 'RESET': return { ...createInitialState(), settings: { ...state.settings }, entered: state.entered };
     case 'SET_SETTINGS': {
       if (!record(action.settings) || Object.keys(action.settings).some(key => !['language', 'sound', 'volume', 'quality', 'lighting'].includes(key))) return state;
@@ -112,11 +116,14 @@ export function parseSave(raw: string): GameState | null {
   try {
     if (typeof raw !== 'string' || raw.length > 16384) return null;
     const value: unknown = JSON.parse(raw);
-    if (!record(value) || !exactKeys(value, ['version', 'stage', 'gates', 'disks', 'rings', 'lighthouseAngle', 'settings', 'entered'])) return null;
+    if (!record(value)) return null;
+    const legacyKeys = ['version', 'stage', 'gates', 'disks', 'rings', 'lighthouseAngle', 'settings', 'entered'];
+    if (value.version === SAVE_VERSION && exactKeys(value, legacyKeys)) value.secretFound = false;
+    if (!exactKeys(value, [...legacyKeys, 'secretFound'])) return null;
     // Additive v1 migration only: unknown keys and malformed values remain invalid.
     if (value.version === 1 && record(value.settings) && exactKeys(value.settings, ['language', 'sound', 'quality', 'lighting'])) value.settings = { ...value.settings, volume: 0.3 };
     if (value.version !== SAVE_VERSION || !Number.isInteger(value.stage) || (value.stage as number) < 0 || (value.stage as number) > 4
-      || typeof value.entered !== 'boolean' || !validSettings(value.settings)
+      || typeof value.entered !== 'boolean' || typeof value.secretFound !== 'boolean' || !validSettings(value.settings)
       || !Array.isArray(value.gates) || value.gates.length !== 3 || !value.gates.every(v => typeof v === 'boolean')
       || !rotationTuple(value.disks, 3, DISK_STEPS) || !rotationTuple(value.rings, 2, RING_STEPS)
       || typeof value.lighthouseAngle !== 'number' || !Number.isFinite(value.lighthouseAngle) || value.lighthouseAngle < 0 || value.lighthouseAngle > 360) return null;
