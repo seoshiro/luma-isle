@@ -15,6 +15,22 @@ export function birdPosition(index: number, time: number, lift = 0) {
   );
 }
 
+/** A waiting orbit above the garden makes the reward launch continuous and visible.
+ * Even its lowest point clears the arch/tree; the climb stays east of the lighthouse.
+ * Smootherstep also matches the high route's velocity when the eight-second lift ends.
+ */
+export function gardenBirdPosition(index:number,time:number,revealAge:number){
+  const slot=index%4,angle=time*.3+slot*.35;
+  const progress=THREE.MathUtils.smootherstep(revealAge,0,8);
+  const spread=Math.sin(progress*Math.PI);
+  const waiting=new THREE.Vector3(
+    14.3+Math.cos(angle)*.85+(slot-1.5)*(.24+spread*.5),
+    4.65+slot*.13+Math.sin(angle*1.2)*.07,
+    -1.3+Math.sin(angle)*.7+(slot-1.5)*spread*.2,
+  );
+  return waiting.lerp(birdPosition(index,time),progress);
+}
+
 export function createNature(root: THREE.Group, garden: THREE.Group) {
   const birds = new THREE.Group(); birds.name = 'Two quiet flocks'; birds.userData.dynamic = true; root.add(birds);
   const bodyGeometry = new THREE.SphereGeometry(1, 8, 5);
@@ -58,8 +74,10 @@ export function createNature(root: THREE.Group, garden: THREE.Group) {
     flock.forEach(({bird,wings},i)=>{
       bird.visible=options.quality!=='low'||i%4<2;
       const t=options.reducedMotion?0:flightTime;
-      const lift=i>=4&&triggered&&!options.reducedMotion?Math.sin(Math.min(1,revealAge/8)*Math.PI)*1.7:0;
-      const p=birdPosition(i,t,lift),next=birdPosition(i,t+.1,lift);bird.position.copy(p);bird.lookAt(next);
+      const age=options.reducedMotion?0:revealAge;
+      const p=i>=4?gardenBirdPosition(i,t,age):birdPosition(i,t);
+      const next=i>=4?gardenBirdPosition(i,t+.1,age+(triggered&&!options.reducedMotion?.1:0)):birdPosition(i,t+.1);
+      bird.position.copy(p);bird.lookAt(next);
       bird.rotation.z=Math.sin(t*.2+i*.4)*.09;
       const flap=options.reducedMotion?.18:Math.sin(t*5.2+i*.8)*.38+.12;
       wings[0].rotation.z=-flap;wings[1].rotation.z=flap;
