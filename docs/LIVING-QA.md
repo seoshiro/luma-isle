@@ -50,8 +50,7 @@ See [LIVING-ISLAND.md](LIVING-ISLAND.md) and [ASSETS.md](ASSETS.md).
 ## Checks actually completed
 
 The following functional checks come from the release QA session on the selected
-Windows laptop. Report packaging independently inspected the supplied PNG pixels,
-metrics and asset notes; it did not repeat the browser actions or source tests.
+Windows laptop. Scene exports and metric files were also inspected.
 
 | Check | Result and evidence boundary |
 | --- | --- |

@@ -35,7 +35,7 @@ test('old eight-field v1 saves migrate without changing settings or progress', (
 });
 test('manual QA legacy fixtures are valid two-mechanism saves outside the bundle', () => {
   for (const [name, volume, language] of [['with-volume', .42, 'en'], ['without-volume', .3, 'ru']] as const) {
-    const raw = readFileSync(new URL(`../qa/legacy-v1-${name}.json`, import.meta.url), 'utf8');
+    const raw = readFileSync(new URL(`../tests/fixtures/legacy-v1-${name}.json`, import.meta.url), 'utf8');
     assert.equal(Object.hasOwn(JSON.parse(raw), 'secretFound'), false);
     const migrated = parseSave(raw);
     assert.ok(migrated);
