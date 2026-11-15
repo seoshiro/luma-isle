@@ -1,0 +1,35 @@
+node_modules/
+dist/
+reference/
+*.log
+qa/
+
+# Local reference material, downloads, screenshots and save backups are not releases.
+materials/
+downloads/
+tmp/
+temp/
+art-staging/
+artifacts/
+screenshots/
+test-results/
+playwright-report/
+coverage/
+*.zip
+*.7z
+*.rar
+*.bak
+*save*.json
+*backup*.json
+
+# Never publish local credentials or machine configuration.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.npmrc
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
