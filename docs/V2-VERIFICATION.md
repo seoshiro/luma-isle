@@ -25,9 +25,30 @@ Date: 15 November 2026. Baseline: 6ee5d4c81dd59256293e3cb3994e09cfcef839b3. The 
 - Chrome Rendering emulated prefers-reduced-motion; matchMedia returned true and focused views settled without animated travel. Emulation was then removed.
 - Sound was enabled by a real click; all three local Ogg files loaded with expected byte counts and no audio failure notice. English menu and volume slider rendered correctly.
 
+## Published release and recording
+
+- Published implementation: `92b18ab783a1b768429bd83779eb51c13ee625a4` at
+  https://seoshiro.github.io/luma-isle/ .
+- [Actions run 43707877269](https://github.com/seoshiro/luma-isle/actions/runs/43707877269)
+  completed successfully. The public HTML references `index-BPBanxsB.js`; the
+  JavaScript and CSS bundles returned HTTP 200.
+- A new recording was made from the public site on 15 November 2026: 1920x1080,
+  4,884 frames, 162.800 seconds, with a 30 fps video-container rate. This is a
+  recording format, not a measurement or guarantee of the scene's rendering FPS.
+- The continuous recording covers entry and manual completion of all four puzzles
+  through 4/4. Sound was enabled by a real click at approximately 29 seconds;
+  the microphone was off. The full original is retained locally and is not included
+  in this repository.
+- The garden flock is visible above the garden before focus and at the start of
+  the transition, then flies beyond the top of the frame. It is not continuously
+  visible throughout the focused garden view.
+- On this published implementation, a 390x844 viewport followed by a reset was
+  checked: the full garden remained framed and the wide overview was restored.
+  The temporary viewport emulation was removed afterwards.
+
 ## Honest limits
 
-No physical phone test and no human headphone listening acceptance were performed. Technical audio tests and successful file loading do not establish perceived loudness, recording quality or natural phrase boundaries. See AUDIO.md for the required listening checklist. Browser frame samples are short diagnostics, not a sustained FPS guarantee. The earlier owner-supplied video is not an assistant-made recording. New published-site recording and deployment verification will be documented after they occur.
+No physical phone test and no human headphone listening acceptance were performed. Technical audio tests and successful file loading do not establish perceived loudness, recording quality or natural phrase boundaries. See AUDIO.md for the required listening checklist. Browser frame samples are short diagnostics, not a sustained FPS guarantee. The earlier owner-supplied video is separate from the new public-site recording documented above.
 
 ## Budget
 
